@@ -44,4 +44,16 @@ public struct CleanReport: Sendable, Codable {
 
     /// True if some items failed/were blocked but others succeeded (→ exit code 3).
     public var isPartial: Bool { !failed.isEmpty || !blocked.isEmpty }
+
+    /// The process exit code this report maps to (Constitution Art. 7). Safety wins over partial.
+    public var resolvedExitCode: CleanerExitCode {
+        if !blocked.isEmpty { return .safety }       // 8
+        if isPartial { return .partial }             // 3
+        return .ok                                   // 0
+    }
+}
+
+public extension ScanResult {
+    /// analyze/scan exit code: partial if any plugin was skipped, else ok.
+    var resolvedExitCode: CleanerExitCode { skipped.isEmpty ? .ok : .partial }
 }

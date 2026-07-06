@@ -69,7 +69,8 @@ struct Analyze: AsyncParsableCommand {
         } else {
             printOut(rt.renderer.analyze(result))
         }
-        if !result.skipped.isEmpty { throw ExitCode(CleanerExitCode.partial.rawValue) }
+        let code = result.resolvedExitCode
+        if code != .ok { throw ExitCode(code.rawValue) }
     }
 }
 
@@ -127,8 +128,8 @@ struct Clean: AsyncParsableCommand {
         if options.json { printOut(try ReportJSON.encode(ReportJSON.clean(report))) }
         else { printOut("\n" + rt.renderer.clean(report)) }
 
-        if !report.blocked.isEmpty { throw ExitCode(CleanerExitCode.safety.rawValue) }
-        if report.isPartial { throw ExitCode(CleanerExitCode.partial.rawValue) }
+        let code = report.resolvedExitCode
+        if code != .ok { throw ExitCode(code.rawValue) }
     }
 }
 

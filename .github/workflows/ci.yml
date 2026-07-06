@@ -14,3 +14,5 @@ jobs:
         run: swift build -v
       - name: Test (includes the 100% safety gate)
         run: swift test -v
+      - name: Integration smoke test
+        run: ./Scripts/integration-smoke.sh

@@ -110,4 +110,22 @@ struct PlanReportTests {
         #expect(CleanerExitCode.safety.rawValue == 8)
         #expect(CleanerExitCode.entitlement.rawValue == 11)
     }
+
+    @Test("report → exit code mapping: safety wins over partial")
+    func exitMapping() {
+        func rep(_ statuses: [CleanReport.Outcome.Status]) -> CleanReport {
+            var r = CleanReport(sessionID: SessionID("s"))
+            r.outcomes = statuses.enumerated().map {
+                .init(itemID: ItemID("\($0.offset)"), path: "/p", status: $0.element)
+            }
+            return r
+        }
+        #expect(rep([.staged, .staged]).resolvedExitCode == .ok)
+        #expect(rep([.staged, .failed]).resolvedExitCode == .partial)
+        #expect(rep([.staged, .blockedBySafety]).resolvedExitCode == .safety)
+        // safety beats partial when both present
+        #expect(rep([.failed, .blockedBySafety]).resolvedExitCode == .safety)
+        #expect(ScanResult(findings: [], skipped: [.init(pluginID: PluginID("p"), reason: "x")])
+                    .resolvedExitCode == .partial)
+    }
 }
