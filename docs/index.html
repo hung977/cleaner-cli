@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>cleaner — a safe macOS disk cleaner for developers</title>
+<meta name="description" content="A CleanMyMac for the terminal. Scan, pick, reclaim — safely. Everything is recoverable with one command.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0a0d11; --bg2:#0d1319; --term:#141c24; --line:#232c35;
+    --text:#e6edf3; --text2:#c6d2dc; --muted:#7d8b98; --dim:#5e7180;
+    --teal:#7ECEC0; --green:#8AC776; --amber:#D9A441; --red:#E5595C;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    background:radial-gradient(1200px 700px at 15% -8%,#12181f 0%,#0a0d11 55%,#07090c 100%);
+    color:var(--text);font-family:'Inter',system-ui,sans-serif;-webkit-font-smoothing:antialiased;
+    line-height:1.6;
+  }
+  a{color:var(--teal);text-decoration:none}
+  a:hover{text-decoration:underline}
+  .wrap{max-width:960px;margin:0 auto;padding:0 24px}
+  code,kbd,.mono{font-family:'JetBrains Mono',ui-monospace,'SF Mono',Menlo,monospace}
+
+  /* nav */
+  nav{display:flex;align-items:center;justify-content:space-between;padding:22px 0;font-size:14px}
+  nav .brand{font-weight:700;letter-spacing:.02em;color:var(--text)}
+  nav .brand b{color:var(--teal)}
+  nav .links a{color:var(--muted);margin-left:20px}
+  nav .links a:hover{color:var(--text)}
+
+  /* hero */
+  .hero{padding:56px 0 28px;text-align:center}
+  .eyebrow{font-size:12.5px;letter-spacing:.28em;text-transform:uppercase;color:var(--teal);font-weight:600}
+  .hero h1{font-size:46px;line-height:1.1;font-weight:700;margin:14px 0 10px;letter-spacing:-.02em}
+  .hero h1 .g{color:var(--green)}
+  .hero p{font-size:18px;color:var(--muted);max-width:640px;margin:0 auto 26px}
+  .cta{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;align-items:center}
+  .install{background:#0e151c;border:1px solid var(--line);border-radius:10px;padding:12px 16px;
+    font-size:14px;color:var(--text2);display:inline-flex;gap:10px;align-items:center}
+  .install .p{color:var(--dim)}
+  .install b{color:var(--green);font-weight:600}
+  .btn{background:var(--green);color:#0a0d11;font-weight:600;border-radius:10px;padding:12px 18px;font-size:14px}
+  .btn.ghost{background:transparent;color:var(--text2);border:1px solid var(--line)}
+
+  /* terminal */
+  .term{margin:40px auto 8px;max-width:760px;border:1px solid var(--line);border-radius:12px;overflow:hidden;
+    box-shadow:0 40px 90px -30px rgba(0,0,0,.8)}
+  .term .bar{height:38px;background:linear-gradient(#2a333d,#212932);display:flex;align-items:center;padding:0 14px;
+    border-bottom:1px solid #161c22;position:relative}
+  .term .dot{width:12px;height:12px;border-radius:50%;margin-right:8px}
+  .term .title{position:absolute;left:0;right:0;text-align:center;font-size:12.5px;color:var(--muted)}
+  .term .body{background:var(--term);padding:18px 22px 20px;font-family:'JetBrains Mono',monospace;
+    font-size:13px;line-height:1.85;color:var(--text2);overflow-x:auto}
+  .term .body .prompt{color:var(--teal)}
+  .term .body .cmd{color:var(--text)}
+  .term .body .hd{color:#e9f0f6;font-weight:700}
+  .term .body .g{color:var(--green)} .term .body .a{color:var(--amber)} .term .body .m{color:var(--muted)} .term .body .d{color:var(--dim)}
+  .row{display:flex;justify-content:space-between}
+
+  /* sections */
+  section{padding:44px 0}
+  h2{font-size:24px;font-weight:700;margin:0 0 6px}
+  .sub{color:var(--muted);margin:0 0 26px}
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+  .card{background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:18px}
+  .card h3{margin:0 0 6px;font-size:15px}
+  .card p{margin:0;color:var(--muted);font-size:14px}
+  .card .ic{font-size:20px}
+  ul.checks{list-style:none;padding:0;margin:0;display:grid;grid-template-columns:1fr 1fr;gap:10px 26px}
+  ul.checks li{color:var(--text2);font-size:14.5px;padding-left:26px;position:relative}
+  ul.checks li::before{content:"✓";position:absolute;left:0;color:var(--green);font-weight:700}
+  table.cmds{width:100%;border-collapse:collapse;font-size:14px}
+  table.cmds td{padding:9px 0;border-bottom:1px solid var(--line);vertical-align:top}
+  table.cmds td.c{white-space:nowrap;padding-right:22px}
+  table.cmds td.c code{color:var(--green);font-size:13px}
+  table.cmds td.d{color:var(--muted)}
+  footer{border-top:1px solid var(--line);padding:26px 0 46px;color:var(--dim);font-size:13.5px;
+    display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px}
+  @media(max-width:680px){.grid{grid-template-columns:1fr}ul.checks{grid-template-columns:1fr}.hero h1{font-size:34px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <nav>
+    <div class="brand"><b>cleaner</b> · cli</div>
+    <div class="links">
+      <a href="#features">Features</a>
+      <a href="#safety">Safety</a>
+      <a href="https://github.com/hung977/cleaner-cli/blob/main/docs/commands.md">Docs</a>
+      <a href="https://github.com/hung977/cleaner-cli">GitHub</a>
+    </div>
+  </nav>
+
+  <header class="hero">
+    <div class="eyebrow">macOS · terminal · open source</div>
+    <h1>Reclaim disk space, <span class="g">safely</span>.</h1>
+    <p>A CleanMyMac for the terminal, built for developers. Scan, pick what to clean,
+       and reclaim gigabytes — everything is recoverable with one command.</p>
+    <div class="cta">
+      <span class="install"><span class="p">$</span> brew install <b>hung977/tap/cleaner</b></span>
+      <a class="btn" href="https://github.com/hung977/cleaner-cli/blob/main/docs/commands.md">Read the docs</a>
+      <a class="btn ghost" href="https://github.com/hung977/cleaner-cli">Star on GitHub</a>
+    </div>
+
+    <div class="term">
+      <div class="bar">
+        <span class="dot" style="background:#ff5f57"></span><span class="dot" style="background:#febc2e"></span><span class="dot" style="background:#28c840"></span>
+        <span class="title">cleaner — zsh</span>
+      </div>
+      <div class="body">
+<div><span class="prompt">❯</span> <span class="cmd">cleaner</span></div>
+<div>&nbsp;</div>
+<div class="row"><span class="hd">DISK RECLAIMABLE</span><span class="g" style="font-weight:700">24.9 GB</span></div>
+<div class="d">11 sources · 7.8s</div>
+<div>&nbsp;</div>
+<div class="row"><span class="hd">Developer Cache</span><span class="g" style="font-weight:700">22.8 GB</span></div>
+<div class="row"><span>&nbsp;&nbsp;Xcode DerivedData (7)</span><span class="g">3.4 GB</span></div>
+<div class="row"><span>&nbsp;&nbsp;SwiftPM cache (2)</span><span class="g">4.6 GB</span></div>
+<div class="row"><span>&nbsp;&nbsp;Gradle caches</span><span class="g">4.6 GB</span></div>
+<div class="row"><span class="m">&nbsp;&nbsp;Xcode Archives (16)</span><span class="a">623.8 MB</span></div>
+<div>&nbsp;</div>
+<div class="row"><span class="hd">Browser Cache</span><span class="a" style="font-weight:700">1.5 GB</span></div>
+<div class="row"><span>&nbsp;&nbsp;Chrome cache</span><span class="a">1.5 GB</span></div>
+<div>&nbsp;</div>
+<div><span class="m">Total</span> <b>24.9 GB</b>&nbsp; <span class="d">·</span> &nbsp;<span class="g">14.4 GB</span> <span class="m">Safe now · </span><span class="a">9.9 GB</span> <span class="m">more with</span> <span class="a">--all</span></div>
+<div>&nbsp;</div>
+<div>&nbsp;&nbsp;Reclaim <span class="g">14.4 GB</span>? <span class="m">[Y/n]</span> ▌</div>
+      </div>
+    </div>
+    <p class="d" style="font-size:13px;color:var(--dim);margin-top:14px">Nothing is deleted without your confirmation. Undo anytime with <code style="color:var(--teal)">cleaner undo</code>.</p>
+  </header>
+
+  <section id="features">
+    <h2>Why cleaner</h2>
+    <p class="sub">Native depth, provable safety, and a workflow that fits the terminal.</p>
+    <div class="grid">
+      <div class="card"><div class="ic">🛟</div><h3>Recoverable by default</h3><p>Cleaned items move to a staging area, not the void. One <code>cleaner undo</code> restores them byte-for-byte.</p></div>
+      <div class="card"><div class="ic">🎯</div><h3>Risk-aware</h3><p>Every source is graded Safe / Medium / Dangerous. Safe is cleaned by default; Dangerous is never auto-touched.</p></div>
+      <div class="card"><div class="ic">⚡</div><h3>Deep &amp; native</h3><p>Xcode, SwiftPM, Gradle, npm, Docker, Homebrew, browser &amp; app caches, logs — measured by true on-disk size.</p></div>
+      <div class="card"><div class="ic">🔒</div><h3>Protected paths</h3><p>Documents, Desktop, SSH keys, Keychains and system files can never be deleted — enforced in the engine.</p></div>
+      <div class="card"><div class="ic">🤖</div><h3>Scriptable</h3><p><code>--yes</code> for automation, <code>--json</code> / <code>--md</code> for machines, a clean exit-code contract for CI.</p></div>
+      <div class="card"><div class="ic">🔎</div><h3>More than cleaning</h3><p>Find large files and byte-identical duplicates read-only: <code>cleaner find large</code> · <code>cleaner find dupes</code>.</p></div>
+    </div>
+  </section>
+
+  <section id="safety">
+    <h2>Safety first — it's the whole point</h2>
+    <p class="sub">A byte wrongly deleted is worse than a gigabyte wrongly kept.</p>
+    <ul class="checks">
+      <li>Preview → confirm → execute, always</li>
+      <li>Moves to staging, not permanent delete</li>
+      <li><code>cleaner undo</code> restores the last clean</li>
+      <li>Never touches Documents / Desktop / keys</li>
+      <li>Browser cache only — never cookies/passwords</li>
+      <li>Dangerous items shown but never auto-cleaned</li>
+      <li>Append-only audit log of every action</li>
+      <li>Honest sizes — dry-run equals the real run</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Commands</h2>
+    <p class="sub">One command to clean; a few more when you want them. <a href="https://github.com/hung977/cleaner-cli/blob/main/docs/commands.md">Full reference →</a></p>
+    <table class="cmds">
+      <tr><td class="c"><code>cleaner</code></td><td class="d">Scan, preview, confirm, reclaim (Safe items, recoverable)</td></tr>
+      <tr><td class="c"><code>cleaner --all</code></td><td class="d">Also clean Medium items (browser/app caches, logs)</td></tr>
+      <tr><td class="c"><code>cleaner --dry-run</code></td><td class="d">Preview only — clean nothing</td></tr>
+      <tr><td class="c"><code>cleaner --yes</code></td><td class="d">No prompt — for automation / CI</td></tr>
+      <tr><td class="c"><code>cleaner undo</code></td><td class="d">Restore the last clean</td></tr>
+      <tr><td class="c"><code>cleaner find large</code></td><td class="d">Largest files (read-only)</td></tr>
+      <tr><td class="c"><code>cleaner find dupes</code></td><td class="d">Duplicate files (read-only)</td></tr>
+    </table>
+  </section>
+
+  <footer>
+    <div>Free &amp; open source (MIT) · built in Swift</div>
+    <div><a href="https://github.com/hung977/cleaner-cli">github.com/hung977/cleaner-cli</a></div>
+  </footer>
+
+</div>
+</body>
+</html>
