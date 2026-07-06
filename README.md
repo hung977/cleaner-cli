@@ -1,7 +1,7 @@
 <h1 align="center">cleaner</h1>
 
 <p align="center">
-  <b>A safe, native macOS disk cleaner for the terminal — a CleanMyMac for developers.</b><br>
+  <b>A safe, native macOS disk cleaner for the terminal, built for developers.</b><br>
   Scan, pick what to clean, reclaim gigabytes — and undo any of it with one command.
 </p>
 

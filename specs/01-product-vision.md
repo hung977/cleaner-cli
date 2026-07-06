@@ -54,7 +54,7 @@ cleaner-cli occupies a quadrant no existing tool fills: **developer-native, tran
 safety-first, scriptable disk reclamation.** The table contrasts it against the categories a
 target user reaches for today.
 
-| Dimension | **cleaner-cli** | CleanMyMac X | DaisyDisk | OmniDiskSweeper | Manual `rm -rf` |
+| Dimension | **cleaner-cli** | a GUI cleaner app | DaisyDisk | OmniDiskSweeper | Manual `rm -rf` |
 |---|---|---|---|---|---|
 | Primary form | CLI + TUI | GUI app | GUI (visualizer) | GUI (list) | Shell |
 | Price / license | **Free, open** | Paid, subscription/one-off | Paid | Free | Free |
@@ -71,12 +71,12 @@ target user reaches for today.
 **Positioning statement.** *For macOS developers who watch their SSD fill with invisible
 caches and build junk, cleaner-cli is a native command-line disk cleaner that reclaims the
 most space safely — previewing, scoring, and reversing every action — unlike paid GUI tools
-(CleanMyMac, DaisyDisk) that are opaque and unscriptable, and unlike manual `rm -rf` that is
+(popular GUI cleaners) that are opaque and unscriptable, and unlike manual `rm -rf` that is
 fast but dangerous.*
 
 ### 4.1 Why each alternative loses for our user
 
-- **CleanMyMac X** — polished but paid, opaque ("Smart Scan" is a black box), GUI-only, not
+- **a GUI cleaner app** — polished but paid, opaque ("Smart Scan" is a black box), GUI-only, not
   scriptable, weak developer-junk literacy, and its trust model is marketing rather than an
   auditable ledger. A user cannot put it in a Makefile or a CI job.
 - **DaisyDisk / OmniDiskSweeper** — excellent *visualizers* of where space went, but they

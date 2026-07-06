@@ -109,7 +109,7 @@ spec 31's snapshot tests of rendered frames).
 ## 7. Configuration — Yams / YAML (ADR-0005)
 
 `~/.cleaner/config.yml` (Constitution Article 8). YAML chosen for comments and readability
-(power users hand-edit it; CleanMyMac users expect friendliness). Yams is the SSWG-adjacent,
+(power users hand-edit it; GUI-cleaner users expect friendliness). Yams is the SSWG-adjacent,
 widely-used, `Codable`-integrated YAML lib. Rejected TOML (less familiar for nested
 whitelist/rules), JSON (no comments), custom format (needless). Schema + validation in spec 24.
 

@@ -13,7 +13,7 @@ admin elevation (FR-098). Users must be able to **trust the binary they run** â€
 passes Gatekeeper on a clean machine, is signed and notarized by a known Developer ID, and is
 installed through a channel developers already trust and can audit. Distribution must not
 introduce a network/telemetry hook (principle 10) and must reach the target audience (developers,
-CleanMyMac refugees) with a familiar, scriptable install and upgrade path.
+GUI-cleaner refugees) with a familiar, scriptable install and upgrade path.
 
 ## Decision Drivers
 

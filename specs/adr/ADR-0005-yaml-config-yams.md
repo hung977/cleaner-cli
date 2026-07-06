@@ -10,7 +10,7 @@
 
 `~/.cleaner/config.yml` (Article 8) is hand-edited by power users and holds nested structures:
 whitelist/protected-path additions, target rules, per-plugin options, thresholds, staging
-retention, and profile definitions. The target audience (developers, CleanMyMac refugees) expects
+retention, and profile definitions. The target audience (developers, GUI-cleaner refugees) expects
 a friendly, commentable config. The format must integrate with Swift `Codable` (spec 24 defines
 the schema + validation) and support `config get/set/edit/validate` (spec 08 §6).
 

@@ -83,7 +83,7 @@ Why does this problem exist and persist? Six root causes, none of which existing
    clean`, `pod cache clean`, `./gradlew clean`), each with its own flags and caveats. No one
    remembers all of them; no one runs all of them.
 6. **No automation surface on trustworthy tools.** The tools that *are* safe and pretty
-   (CleanMyMac, DaisyDisk) are GUIs with no scriptable interface, so they cannot be part of a
+   (popular GUI cleaners) are GUIs with no scriptable interface, so they cannot be part of a
    CI image, a machine-setup script, or a team runbook. Safety and automation are, today,
    mutually exclusive.
 
@@ -96,7 +96,7 @@ Causes 1–2 are inherent to the ecosystem; the tool mitigates their *effects*.
 
 | Alternative | What it does well | Where it fails our user (the gap) |
 |---|---|---|
-| **CleanMyMac X** | Polished, safe-ish, broad; approachable for non-experts. | Paid; opaque "Smart Scan" black box; GUI-only, **not scriptable / CI-usable**; shallow developer-junk literacy; trust is asserted, not auditable. |
+| **a GUI cleaner app** | Polished, safe-ish, broad; approachable for non-experts. | Paid; opaque "Smart Scan" black box; GUI-only, **not scriptable / CI-usable**; shallow developer-junk literacy; trust is asserted, not auditable. |
 | **DaisyDisk** | Beautiful, fast **visualization** of where space went. | Only *shows* size; the human still decides and deletes; no risk scoring, no reversibility, no developer semantics, no automation. |
 | **OmniDiskSweeper** | Free; simple largest-first list. | Same as DaisyDisk minus the polish: pure sizing, no safety, no semantics, no automation, no undo. |
 | **GrandPerspective / Disk Inventory X** | Free visual treemaps. | Visualization only; identical gaps to DaisyDisk. |

@@ -273,7 +273,7 @@ lives at the end of spec 06.
 | CC-2 | CLI parsing = **Swift Argument Parser** | First-party, declarative, testable, completions. | ADR-0002 |
 | CC-3 | Concurrency = **Swift Concurrency (actors/TaskGroup)** | Structured cancellation, data-race safety. | ADR-0003 |
 | CC-4 | TUI = **custom component layer over ANSI**, small deps for color/width | No mature Swift TUI covers our needs; control + no heavy deps. | ADR-0004 |
-| CC-5 | Config = **YAML (Yams)** | Human-friendly, comments, matches CleanMyMac-style expectations. | ADR-0005 |
+| CC-5 | Config = **YAML (Yams)** | Human-friendly, comments, matches consumer-cleaner-style expectations. | ADR-0005 |
 | CC-6 | Logging = **swift-log** + custom audit sink | SSWG standard, pluggable backends. | ADR-0006 |
 | CC-7 | Delete = **stage-then-purge**, macOS Trash optional | Reversibility principle. | ADR-0007 |
 | CC-8 | Plugins = **in-process, statically linked, protocol-based** (v1) | Safety + performance; out-of-process/dylib deferred. | ADR-0008 |
