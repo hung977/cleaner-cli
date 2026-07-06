@@ -29,6 +29,16 @@ struct ReportTests {
         #expect(md.contains("Nothing reclaimable found"))
     }
 
+    @Test("summary renderer draws a total box and aligned rows (no-color)")
+    func summary() {
+        let r = SummaryRenderer(useColor: false, width: 80)
+        let out = r.analyze(sample(), elapsed: "1.2s")
+        #expect(out.contains("Developer Cache"))
+        #expect(out.contains("Total reclaimable"))
+        #expect(out.contains("╭") && out.contains("╰"))   // boxed total
+        #expect(out.contains("2.0 MB"))
+    }
+
     @Test("analyze JSON has schemaVersion and totals")
     func json() throws {
         let dto = ReportJSON.analyze(sample())

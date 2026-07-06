@@ -17,7 +17,9 @@ struct Report: AsyncParsableCommand {
         let rt = Runtime(useColor: false)
         if let e = rt.configError { printErr("\(e)"); throw ExitCode(CleanerExitCode.config.rawValue) }
         let plugins = selectPlugins(rt.registry, include: options.include, exclude: options.exclude)
-        let result = rt.applyConfig(await rt.scanEngine.scan(plugins: plugins, context: rt.context()))
+        let (raw, _) = await scanWithSpinner(rt, plugins: plugins, context: rt.context(),
+                                             live: liveEnabled(json: options.json), color: false)
+        let result = rt.applyConfig(raw)
 
         let text: String
         switch (options.json ? .json : format) {

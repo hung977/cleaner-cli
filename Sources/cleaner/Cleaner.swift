@@ -63,12 +63,14 @@ struct Analyze: AsyncParsableCommand {
         let rt = Runtime(useColor: options.useColor)
         if let e = rt.configError { printErr("\(e)"); throw ExitCode(CleanerExitCode.config.rawValue) }
         let plugins = selectPlugins(rt.registry, include: options.include, exclude: options.exclude)
-        let result = rt.applyConfig(await rt.scanEngine.scan(plugins: plugins, context: rt.context()))
+        let (raw, elapsed) = await scanWithSpinner(rt, plugins: plugins, context: rt.context(),
+                                                   live: liveEnabled(json: options.json), color: options.useColor)
+        let result = rt.applyConfig(raw)
 
         if options.json {
             printOut(try ReportJSON.encode(ReportJSON.analyze(result)))
         } else {
-            printOut(rt.renderer.analyze(result))
+            printOut(rt.renderer.analyze(result, elapsed: elapsed))
         }
         let code = result.resolvedExitCode
         if code != .ok { throw ExitCode(code.rawValue) }
@@ -96,14 +98,16 @@ struct Clean: AsyncParsableCommand {
         if let e = rt.configError { printErr("\(e)"); throw ExitCode(CleanerExitCode.config.rawValue) }
         let plugins = selectPlugins(rt.registry, include: options.include, exclude: options.exclude)
         let ctx = rt.context()
-        let result = rt.applyConfig(await rt.scanEngine.scan(plugins: plugins, context: ctx))
+        let (raw, elapsed) = await scanWithSpinner(rt, plugins: plugins, context: ctx,
+                                                   live: liveEnabled(json: options.json), color: options.useColor)
+        let result = rt.applyConfig(raw)
 
         // Selection: Safe by default; +Medium with --risky; never Dangerous; --yes ⇒ Safe only.
         var selected = result.findings.filter { $0.risk == .safe }
         if risky { selected += result.findings.filter { $0.risk == .medium } }
         if yes { selected = selected.filter { $0.risk.isAutoCleanable } }
 
-        if !options.json { printOut(rt.renderer.analyze(result)) }
+        if !options.json { printOut(rt.renderer.analyze(result, elapsed: elapsed)) }
 
         if selected.isEmpty {
             if !options.json { printOut("\nNothing selected to clean.") }

@@ -13,8 +13,12 @@ public struct ScanEngine: Sendable {
     private let guard_: ProtectedPathGuard
     public init(guard_: ProtectedPathGuard) { self.guard_ = guard_ }
 
-    public func scan(plugins: [any CleanerPlugin], context: PluginContext) async -> ScanResult {
-        await withTaskGroup(of: PluginScan.self) { group in
+    /// - Parameter progress: called after each plugin finishes with (done, total, bytesFoundSoFar),
+    ///   so the CLI can animate a live spinner instead of sitting silent.
+    public func scan(plugins: [any CleanerPlugin], context: PluginContext,
+                     progress: (@Sendable (Int, Int, ByteCount) -> Void)? = nil) async -> ScanResult {
+        let total = plugins.count
+        return await withTaskGroup(of: PluginScan.self) { group in
             for plugin in plugins {
                 group.addTask {
                     if Task.isCancelled { return .cancelled(plugin.metadata.id) }
@@ -35,6 +39,7 @@ public struct ScanEngine: Sendable {
             }
 
             var result = ScanResult()
+            var done = 0
             for await scan in group {
                 switch scan {
                 case .ok(let findings):
@@ -44,6 +49,8 @@ public struct ScanEngine: Sendable {
                 case .cancelled(let id):
                     result.skipped.append(.init(pluginID: id, reason: "cancelled"))
                 }
+                done += 1
+                progress?(done, total, result.findings.map(\.reclaimableSize).total())
             }
             // Deterministic ordering: largest reclaim first, then by id for ties.
             result.findings.sort {
