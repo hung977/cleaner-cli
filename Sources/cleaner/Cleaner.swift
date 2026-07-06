@@ -45,7 +45,8 @@ struct Cleaner: AsyncParsableCommand {
             printOut(try ReportJSON.encode(ReportJSON.analyze(result))); return
         }
         if md {
-            printOut(MarkdownReport.render(result, generatedAt: rt.clock.timestamp())); return
+            printOut(MarkdownReport.render(result, generatedAt: rt.clock.timestamp(),
+                                           names: rt.pluginNames())); return
         }
 
         // ── Preview (--dry-run): show + suggest next steps, act on nothing ─

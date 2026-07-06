@@ -14,13 +14,15 @@ struct ReportTests {
         return ScanResult(findings: [f])
     }
 
-    @Test("markdown report contains header, total, table and item")
+    @Test("markdown report is grouped by source, icon-free, with a risk column")
     func markdown() {
-        let md = MarkdownReport.render(sample(), generatedAt: "2026-07-06T00:00:00Z")
+        let md = MarkdownReport.render(sample(), generatedAt: "2026-07-06T00:00:00Z",
+                                       names: [PluginID("dev.cleaner.xcode.deriveddata"): "Xcode DerivedData"])
         #expect(md.contains("# cleaner — Storage Report"))
         #expect(md.contains("**Total reclaimable: 2.0 MB**"))
-        #expect(md.contains("| Category | Reclaimable | Items |"))
-        #expect(md.contains("🟢 **2.0 MB** — `MyApp-abc`"))
+        #expect(md.contains("| Source | Reclaimable | Risk |"))
+        #expect(md.contains("| Xcode DerivedData | 2.0 MB | safe |"))
+        #expect(!md.contains("🟢") && !md.contains("🛠"))   // no emoji
     }
 
     @Test("empty scan renders a tidy markdown message")
