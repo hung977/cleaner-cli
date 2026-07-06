@@ -7,6 +7,16 @@
 **Status:** 🚧 In development (v0.5). The full SpecKit specification suite lives in
 [`specs/`](./specs); the CLI is being built against it.
 
+## Install
+
+```sh
+brew tap hung977/tap
+brew trust hung977/tap      # Homebrew requires trusting third-party taps (one-time)
+brew install cleaner
+```
+
+Builds from source with `swift build` (needs the Xcode command-line tools). Then:
+
 ```
 cleaner                 # scan, pick what to clean, reclaim (interactive) — one command
 cleaner --dry-run       # preview only (scan + suggestions, nothing deleted)
