@@ -6,7 +6,7 @@
 public struct Finding: Sendable, Hashable, Codable, Identifiable {
     public let item: Item
     public let pluginID: PluginID
-    public let category: Category
+    public let category: FindingCategory
     public let safetyScore: SafetyScore
     public let risk: RiskLevel
     public let recoverability: Recoverability
@@ -20,7 +20,7 @@ public struct Finding: Sendable, Hashable, Codable, Identifiable {
     public init(
         item: Item,
         pluginID: PluginID,
-        category: Category,
+        category: FindingCategory,
         safetyScore: SafetyScore,
         recoverability: Recoverability,
         proposedDisposition: Disposition = .stage,

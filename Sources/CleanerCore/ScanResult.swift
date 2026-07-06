@@ -22,8 +22,8 @@ public struct ScanResult: Sendable, Codable {
     public var totalReclaimable: ByteCount { findings.map(\.reclaimableSize).total() }
 
     /// Findings grouped by category, each subtotal descending by size.
-    public func byCategory() -> [(category: Category, findings: [Finding], total: ByteCount)] {
-        var buckets: [String: (Category, [Finding])] = [:]
+    public func byCategory() -> [(category: FindingCategory, findings: [Finding], total: ByteCount)] {
+        var buckets: [String: (FindingCategory, [Finding])] = [:]
         for f in findings {
             buckets[f.category.id, default: (f.category, [])].1.append(f)
         }
