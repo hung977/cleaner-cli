@@ -18,6 +18,16 @@ struct PickItem {
 enum MultiSelect {
     private static func emit(_ s: String) { FileHandle.standardError.write(Data(s.utf8)) }
 
+    /// Terminal width from whichever of stderr/stdout/stdin is a TTY (we draw to stderr).
+    private static func termWidth() -> Int {
+        var ws = winsize()
+        for fd in [fileno(stderr), fileno(stdout), fileno(stdin)] {
+            if ioctl(fd, UInt(TIOCGWINSZ), &ws) == 0, ws.ws_col > 0 { return Int(ws.ws_col) }
+        }
+        if let c = ProcessInfo.processInfo.environment["COLUMNS"], let n = Int(c) { return n }
+        return 80
+    }
+
     static func run(title: String, items: [PickItem], style s: Style) -> [Int]? {
         guard isatty(fileno(stdin)) == 1, isatty(fileno(stderr)) == 1 else { return nil }
 
@@ -27,6 +37,7 @@ enum MultiSelect {
         tcgetattr(fileno(stdin), &orig)
         var raw = orig
         raw.c_lflag &= ~(UInt(ECHO) | UInt(ICANON) | UInt(ISIG) | UInt(IEXTEN))
+        raw.c_oflag &= ~UInt(OPOST)   // no output post-processing (no NL→CRNL mangling)
         tcsetattr(fileno(stdin), TCSANOW, &raw)
         emit("\u{1B}[?1049h\u{1B}[?25l")   // enter alt screen + hide cursor
         defer {
@@ -39,7 +50,7 @@ enum MultiSelect {
         let sizeW = items.map { $0.size.formatted.count }.max() ?? 8
 
         func draw() {
-            let width = SummaryRenderer.terminalWidth()
+            let width = termWidth()
             var lines: [String] = ["", "  " + s.hex(0xC6D2DC, title), ""]
             for (i, it) in items.enumerated() {
                 let pointer = i == cursor ? s.hex(0x7ECEC0, "❯") : " "
@@ -64,8 +75,10 @@ enum MultiSelect {
             lines.append("")
             lines.append("  " + s.hex(0x5E7180, "↑↓ move · space toggle · a all · enter clean · q cancel"))
             lines.append("  " + s.hex(0x8B98A5, "\(chosen) selected · \(total.formatted)"))
-            // Home + clear-to-end, then paint from the top. No relative cursor math.
-            emit("\u{1B}[H\u{1B}[0J" + lines.joined(separator: "\r\n"))
+            // Absolute cursor positioning per line: bulletproof against wrap / output modes.
+            var frame = "\u{1B}[2J\u{1B}[H"
+            for (row, line) in lines.enumerated() { frame += "\u{1B}[\(row + 1);1H" + line }
+            emit(frame)
         }
 
         draw()
