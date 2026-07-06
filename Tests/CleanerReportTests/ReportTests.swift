@@ -29,14 +29,15 @@ struct ReportTests {
         #expect(md.contains("Nothing reclaimable found"))
     }
 
-    @Test("summary renderer is a bar chart, icon-free (no-color)")
+    @Test("summary renderer is a plain aligned list, icon-free & bar-free (no-color)")
     func summary() {
         let r = SummaryRenderer(useColor: false, width: 80)
         let out = r.analyze(sample(), elapsed: "1.2s")
         #expect(out.contains("DISK RECLAIMABLE"))    // header
-        #expect(out.contains("Developer Cache"))
-        #expect(out.contains("█"))                   // proportional bar
-        #expect(out.contains("2.0 MB"))
+        #expect(out.contains("Developer Cache"))     // category
+        #expect(out.contains("2.0 MB"))              // right-aligned size
+        #expect(out.contains("Total"))
+        #expect(!out.contains("█"))                  // no bars
         #expect(!out.contains("🟢") && !out.contains("🛠"))  // no emoji
     }
 
