@@ -84,5 +84,15 @@ set +e; "$BIN" docker >/dev/null 2>&1; rc=$?; set -e
 echo "› brew command runs (dry-run) if Homebrew present"
 if command -v brew >/dev/null 2>&1; then "$BIN" brew >/dev/null 2>&1 || fail "brew command should not crash"; fi
 
+echo "› optimize runs (read-only)"
+"$BIN" optimize >/dev/null || fail "optimize should succeed"
+
+echo "› profiles: list, scoped analyze, and unknown profile → exit 6"
+printf 'version: 1\nprofiles:\n  xcode-only:\n    include: [dev.cleaner.xcode.deriveddata]\n' > "$H/.cleaner/config.yml"
+"$BIN" profile list | grep -q "xcode-only" || fail "profile list should show xcode-only"
+set +e; "$BIN" analyze --profile nope >/dev/null 2>&1; rc=$?; set -e
+[ "$rc" -eq 6 ] || fail "unknown profile should exit 6 (got $rc)"
+rm -f "$H/.cleaner/config.yml"
+
 rm -rf "$(dirname "$H")"
 echo "✓ integration smoke test passed"

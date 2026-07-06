@@ -34,6 +34,24 @@ struct ConfigTests {
         #expect(cfg.whitelist == ["/Users/me/critical"])
     }
 
+    @Test("loads named profiles with include/exclude/risky")
+    func profiles() throws {
+        let path = try writeConfig("""
+        version: 1
+        profiles:
+          xcode-only:
+            include: [dev.cleaner.xcode.deriveddata]
+          aggressive:
+            risky: true
+        """)
+        defer { try? FileManager.default.removeItem(atPath: (path as NSString).deletingLastPathComponent) }
+        let cfg = try ConfigLoader().load(path: path)
+        #expect(cfg.profiles.count == 2)
+        #expect(cfg.profiles["xcode-only"]?.include == ["dev.cleaner.xcode.deriveddata"])
+        #expect(cfg.profiles["xcode-only"]?.risky == false)
+        #expect(cfg.profiles["aggressive"]?.risky == true)
+    }
+
     @Test("unsupported version throws (exit 6 territory)")
     func badVersion() throws {
         let path = try writeConfig("version: 99\nignore: []\n")

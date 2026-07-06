@@ -4,6 +4,7 @@ import Darwin
 import CleanerCore
 import CleanerEngine
 import CleanerReport
+import CleanerConfig
 
 @main
 struct Cleaner: AsyncParsableCommand {
@@ -12,8 +13,43 @@ struct Cleaner: AsyncParsableCommand {
         abstract: "A safe, native macOS disk cleaner for developers.",
         version: "0.1.0-dev",
         subcommands: [Analyze.self, Clean.self, Staging.self, Doctor.self, Report.self,
-                      LargeFiles.self, Duplicates.self, Docker.self, Brew.self]
+                      LargeFiles.self, Duplicates.self, Docker.self, Brew.self,
+                      Optimize.self, ProfileCmd.self]
     )
+}
+
+// MARK: - profile
+
+struct ProfileCmd: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(commandName: "profile",
+        abstract: "List saved profiles from config.yml.", subcommands: [ProfileList.self],
+        defaultSubcommand: ProfileList.self)
+}
+
+struct ProfileList: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(commandName: "list",
+        abstract: "List saved profiles.")
+    @OptionGroup var options: GlobalOptions
+    func run() async throws {
+        let rt = Runtime(useColor: options.useColor)
+        if let e = rt.configError { printErr("\(e)"); throw ExitCode(CleanerExitCode.config.rawValue) }
+        let s = Style(enabled: options.useColor)
+        let profs = rt.config.profiles
+        printOut("")
+        if profs.isEmpty {
+            printOut("  " + s.hex(0x8B98A5, "No profiles defined. Add a `profiles:` section to ~/.cleaner/config.yml.") + "\n")
+            return
+        }
+        for name in profs.keys.sorted() {
+            let p = profs[name]!
+            var bits: [String] = []
+            if !p.include.isEmpty { bits.append("include \(p.include.count)") }
+            if !p.exclude.isEmpty { bits.append("exclude \(p.exclude.count)") }
+            if p.risky { bits.append("risky") }
+            printOut("  " + s.hexBold(0x7ECEC0, name) + s.hex(0x5E7180, "  " + (bits.isEmpty ? "all safe sources" : bits.joined(separator: " · "))))
+        }
+        printOut("\n  " + s.hex(0x8B98A5, "use with  ") + s.hexBold(0x8AC776, "cleaner clean --profile <name>") + "\n")
+    }
 }
 
 // MARK: - Shared options & helpers
@@ -33,6 +69,9 @@ struct GlobalOptions: ParsableArguments {
 
     @Option(help: "Skip these plugins (comma-separated ids).")
     var exclude: String?
+
+    @Option(help: "Use a saved profile from config.yml.")
+    var profile: String?
 
     /// Color only when a TTY, not disabled, and NO_COLOR unset.
     var useColor: Bool {
@@ -63,7 +102,11 @@ struct Analyze: AsyncParsableCommand {
     func run() async throws {
         let rt = Runtime(useColor: options.useColor)
         if let e = rt.configError { printErr("\(e)"); throw ExitCode(CleanerExitCode.config.rawValue) }
-        let plugins = selectPlugins(rt.registry, include: options.include, exclude: options.exclude)
+        let sel: (include: String?, exclude: String?, risky: Bool)
+        do { sel = try resolveSelection(config: rt.config, profileName: options.profile,
+                                        include: options.include, exclude: options.exclude) }
+        catch { printErr("\(error)"); throw ExitCode(CleanerExitCode.config.rawValue) }
+        let plugins = selectPlugins(rt.registry, include: sel.include, exclude: sel.exclude)
         let (raw, elapsed) = await scanWithSpinner(rt, plugins: plugins, context: rt.context(),
                                                    live: liveEnabled(json: options.json), color: options.useColor)
         let result = rt.applyConfig(raw)
@@ -98,15 +141,20 @@ struct Clean: AsyncParsableCommand {
     func run() async throws {
         let rt = Runtime(useColor: options.useColor)
         if let e = rt.configError { printErr("\(e)"); throw ExitCode(CleanerExitCode.config.rawValue) }
-        let plugins = selectPlugins(rt.registry, include: options.include, exclude: options.exclude)
+        let sel: (include: String?, exclude: String?, risky: Bool)
+        do { sel = try resolveSelection(config: rt.config, profileName: options.profile,
+                                        include: options.include, exclude: options.exclude) }
+        catch { printErr("\(error)"); throw ExitCode(CleanerExitCode.config.rawValue) }
+        let plugins = selectPlugins(rt.registry, include: sel.include, exclude: sel.exclude)
         let ctx = rt.context()
         let (raw, elapsed) = await scanWithSpinner(rt, plugins: plugins, context: ctx,
                                                    live: liveEnabled(json: options.json), color: options.useColor)
         let result = rt.applyConfig(raw)
 
-        // Selection: Safe by default; +Medium with --risky; never Dangerous; --yes ⇒ Safe only.
+        // Selection: Safe by default; +Medium with --risky or a risky profile; never Dangerous.
+        let includeMedium = risky || sel.risky
         var selected = result.findings.filter { $0.risk == .safe }
-        if risky { selected += result.findings.filter { $0.risk == .medium } }
+        if includeMedium { selected += result.findings.filter { $0.risk == .medium } }
         if yes { selected = selected.filter { $0.risk.isAutoCleanable } }
 
         if !options.json { printOut(rt.renderer.analyze(result, elapsed: elapsed,

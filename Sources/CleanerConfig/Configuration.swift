@@ -2,6 +2,27 @@ import Foundation
 import CleanerCore
 import Yams
 
+/// A saved, named selection of plugins + options (specs/24 profiles).
+public struct Profile: Sendable, Codable, Equatable {
+    public var include: [String]
+    public var exclude: [String]
+    public var risky: Bool
+
+    public init(include: [String] = [], exclude: [String] = [], risky: Bool = false) {
+        self.include = include
+        self.exclude = exclude
+        self.risky = risky
+    }
+
+    enum CodingKeys: String, CodingKey { case include, exclude, risky }
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.include = try c.decodeIfPresent([String].self, forKey: .include) ?? []
+        self.exclude = try c.decodeIfPresent([String].self, forKey: .exclude) ?? []
+        self.risky = try c.decodeIfPresent(Bool.self, forKey: .risky) ?? false
+    }
+}
+
 /// User configuration loaded from `~/.cleaner/config.yml` (specs/24, v0.5 subset).
 public struct CleanerConfiguration: Sendable, Codable, Equatable {
     public var version: Int
@@ -9,20 +30,25 @@ public struct CleanerConfiguration: Sendable, Codable, Equatable {
     public var ignore: [String]
     /// Glob patterns the tool must never touch (treated as protected).
     public var whitelist: [String]
+    /// Named profiles (selection presets).
+    public var profiles: [String: Profile]
 
-    public init(version: Int = 1, ignore: [String] = [], whitelist: [String] = []) {
+    public init(version: Int = 1, ignore: [String] = [], whitelist: [String] = [],
+                profiles: [String: Profile] = [:]) {
         self.version = version
         self.ignore = ignore
         self.whitelist = whitelist
+        self.profiles = profiles
     }
 
     // All keys optional in YAML (a minimal config need only set what it overrides).
-    enum CodingKeys: String, CodingKey { case version, ignore, whitelist }
+    enum CodingKeys: String, CodingKey { case version, ignore, whitelist, profiles }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         self.version = try c.decodeIfPresent(Int.self, forKey: .version) ?? 1
         self.ignore = try c.decodeIfPresent([String].self, forKey: .ignore) ?? []
         self.whitelist = try c.decodeIfPresent([String].self, forKey: .whitelist) ?? []
+        self.profiles = try c.decodeIfPresent([String: Profile].self, forKey: .profiles) ?? [:]
     }
 
     public static let empty = CleanerConfiguration()
