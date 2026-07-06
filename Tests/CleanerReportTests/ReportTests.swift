@@ -29,14 +29,15 @@ struct ReportTests {
         #expect(md.contains("Nothing reclaimable found"))
     }
 
-    @Test("summary renderer draws a total box and aligned rows (no-color)")
+    @Test("summary renderer is icon-free, columnar, with a total line (no-color)")
     func summary() {
         let r = SummaryRenderer(useColor: false, width: 80)
         let out = r.analyze(sample(), elapsed: "1.2s")
-        #expect(out.contains("Developer Cache"))
+        #expect(out.contains("DEVELOPER CACHE"))     // uppercase header
+        #expect(out.contains("safe"))                // risk as a word, not an emoji
         #expect(out.contains("Total reclaimable"))
-        #expect(out.contains("╭") && out.contains("╰"))   // boxed total
         #expect(out.contains("2.0 MB"))
+        #expect(!out.contains("🟢") && !out.contains("🛠"))  // no emoji
     }
 
     @Test("analyze JSON has schemaVersion and totals")
