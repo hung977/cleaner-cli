@@ -4,7 +4,20 @@ import Foundation
 /// (respects `--no-color` / `NO_COLOR` / non-TTY), so callers never branch on color themselves.
 public struct Style: Sendable {
     public let enabled: Bool
-    public init(enabled: Bool) { self.enabled = enabled }
+    /// True when the terminal supports 24-bit colour (COLORTERM=truecolor/24bit, e.g. iTerm2,
+    /// VS Code, Ghostty). Apple Terminal does NOT — it mis-parses `38;2;…` and eats characters,
+    /// so we emit 256-colour there instead.
+    public let truecolor: Bool
+
+    public init(enabled: Bool, truecolor: Bool = Style.detectTruecolor()) {
+        self.enabled = enabled
+        self.truecolor = truecolor
+    }
+
+    public static func detectTruecolor() -> Bool {
+        let ct = ProcessInfo.processInfo.environment["COLORTERM"]?.lowercased() ?? ""
+        return ct == "truecolor" || ct == "24bit"
+    }
 
     private func wrap(_ code: String, _ s: String) -> String {
         enabled ? "\u{001B}[\(code)m\(s)\u{001B}[0m" : s
@@ -19,12 +32,25 @@ public struct Style: Sendable {
 
     // MARK: 24-bit truecolor (to match the Claude Design slate/teal/green palette exactly)
 
-    /// Foreground colour from a 0xRRGGBB hex, optionally bold.
+    /// Foreground colour from a 0xRRGGBB hex, optionally bold. Emits 24-bit on capable terminals,
+    /// else the nearest xterm-256 colour (safe on Apple Terminal).
     public func hex(_ rgb: UInt32, _ s: String, bold: Bool = false) -> String {
         guard enabled else { return s }
-        let r = (rgb >> 16) & 0xFF, g = (rgb >> 8) & 0xFF, b = rgb & 0xFF
+        let r = Int((rgb >> 16) & 0xFF), g = Int((rgb >> 8) & 0xFF), b = Int(rgb & 0xFF)
+        let color = truecolor ? "38;2;\(r);\(g);\(b)" : "38;5;\(Self.xterm256(r, g, b))"
         let lead = bold ? "1;" : ""
-        return "\u{001B}[\(lead)38;2;\(r);\(g);\(b)m\(s)\u{001B}[0m"
+        return "\u{001B}[\(lead)\(color)m\(s)\u{001B}[0m"
+    }
+
+    /// Nearest xterm-256 index for an RGB triple (6×6×6 cube + grayscale ramp).
+    static func xterm256(_ r: Int, _ g: Int, _ b: Int) -> Int {
+        if r == g, g == b {                                  // grayscale
+            if r < 8 { return 16 }
+            if r > 248 { return 231 }
+            return 232 + Int((Double(r) - 8) / 247 * 24)
+        }
+        func c(_ v: Int) -> Int { Int((Double(v) / 255 * 5).rounded()) }
+        return 16 + 36 * c(r) + 6 * c(g) + c(b)
     }
     public func hexBold(_ rgb: UInt32, _ s: String) -> String { hex(rgb, s, bold: true) }
 
