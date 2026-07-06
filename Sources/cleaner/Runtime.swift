@@ -61,7 +61,7 @@ struct Runtime {
     }
 
     func context() -> PluginContext {
-        PluginContext(fs: fs, home: home, now: clock.now,
+        PluginContext(fs: fs, home: home, now: clock.now, shell: ShellAdapter(),
                       logger: { FileHandle.standardError.write(Data(($0 + "\n").utf8)) })
     }
 

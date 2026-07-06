@@ -38,13 +38,18 @@ public struct PluginContext: Sendable {
     public let fs: FilesystemProviding
     public let home: String
     public let now: Date               // injected clock (deterministic in tests)
+    /// External-tool runner for shell-adapter plugins (docker/brew/xcrun). Nil in unit tests
+    /// unless a mock is supplied; a plugin needing it must degrade gracefully when absent.
+    public let shell: ShellRunning?
     private let logger: @Sendable (String) -> Void
 
     public init(fs: FilesystemProviding, home: String, now: Date,
+                shell: ShellRunning? = nil,
                 logger: @escaping @Sendable (String) -> Void = { _ in }) {
         self.fs = fs
         self.home = home
         self.now = now
+        self.shell = shell
         self.logger = logger
     }
 

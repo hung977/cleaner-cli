@@ -77,5 +77,12 @@ mkfile "$H/Downloads/dupe-a.bin" 2000; cp "$H/Downloads/dupe-a.bin" "$H/Download
 "$BIN" duplicates --min 1MB "$H/Downloads" | grep -qi "reclaimable" || fail "duplicates should report reclaimable"
 assert_exists "$H/Downloads/dupe-a.bin"; assert_exists "$H/Downloads/dupe-b.bin"  # read-only
 
+echo "› docker command degrades cleanly when unavailable"
+set +e; "$BIN" docker >/dev/null 2>&1; rc=$?; set -e
+{ [ "$rc" -eq 0 ] || [ "$rc" -eq 10 ]; } || fail "docker should exit 0 or 10 (got $rc)"
+
+echo "› brew command runs (dry-run) if Homebrew present"
+if command -v brew >/dev/null 2>&1; then "$BIN" brew >/dev/null 2>&1 || fail "brew command should not crash"; fi
+
 rm -rf "$(dirname "$H")"
 echo "✓ integration smoke test passed"

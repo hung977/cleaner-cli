@@ -44,6 +44,7 @@ public enum BundledPlugins {
     public static func all() -> [any CleanerPlugin] {
         var plugins: [any CleanerPlugin] = [XcodeDerivedDataPlugin(), NpmCachePlugin()]
         plugins += DevCachePlugins.all()   // v0.5: SwiftPM, CocoaPods, pip, Gradle, Homebrew
+        plugins.append(SimulatorPlugin())  // 🟡 orphaned simulator devices (file-based)
         plugins.append(TrashPlugin())      // 🟡 last
         return plugins
     }
