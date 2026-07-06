@@ -22,7 +22,7 @@ struct Cleaner: AsyncParsableCommand {
     @OptionGroup var options: GlobalOptions
     @Flag(name: .long, help: "Preview only — scan and show, clean nothing.") var dryRun = false
     @Flag(name: .long, help: "Clean Safe items without prompting (automation).") var yes = false
-    @Flag(name: .long, help: "Also pre-select Medium items in the picker.") var all = false
+    @Flag(name: .long, help: "Also clean Medium (🟡) items, not just Safe.") var all = false
     @Flag(name: .long, help: "Emit a Markdown report (implies preview).") var md = false
 
     func run() async throws {
@@ -56,42 +56,32 @@ struct Cleaner: AsyncParsableCommand {
             return
         }
 
-        if result.findings.isEmpty {
-            printOut(rt.renderer.analyze(result, elapsed: elapsed)); return
+        // Show the summary (renders reliably — sizes + risk colours), then confirm with y/N.
+        printOut(rt.renderer.analyze(result, elapsed: elapsed, names: rt.pluginNames(), verbose: options.verbose))
+
+        let safe = result.findings.filter { $0.risk == .safe }
+        let medium = result.findings.filter { $0.risk == .medium }
+        var selected = safe
+        if all { selected += medium }
+        selected = selected.filter { $0.risk != .dangerous }   // never Dangerous
+        if selected.isEmpty {
+            printOut("\n  " + s.hex(0x8B98A5, medium.isEmpty
+                ? "Nothing to clean." : "Nothing Safe to clean — pass --all to include Medium (🟡)."))
+            return
         }
+        let total = selected.map(\.reclaimableSize).total()
 
-        // Group findings into pickable "sources" (one per plugin), largest first.
-        let names = rt.pluginNames()
-        let sources = Dictionary(grouping: result.findings, by: { $0.pluginID })
-            .map { (id, fs) -> (name: String, findings: [Finding], total: ByteCount, worst: RiskLevel) in
-                (names[id] ?? id.rawValue, fs, fs.map(\.reclaimableSize).total(), fs.map(\.risk).max() ?? .safe)
+        if !yes {
+            guard isatty(fileno(stdin)) == 1 else {
+                printErr("  Not a terminal — run with " + s.hexBold(0x8AC776, "--yes") + " to clean.")
+                throw ExitCode(CleanerExitCode.cancelled.rawValue)
             }
-            .sorted { $0.total.bytes > $1.total.bytes }
-
-        // ── Choose what to clean ────────────────────────────────────────
-        var chosen: [Int]
-        if yes {
-            chosen = sources.indices.filter { sources[$0].worst == .safe }   // automation: Safe only
-        } else if isatty(fileno(stdin)) == 1 {
-            let items = sources.map {
-                PickItem(label: $0.name, size: $0.total, risk: $0.worst,
-                         selected: $0.worst == .safe || (all && $0.worst == .medium))
+            let extra = (all && !medium.isEmpty) ? " (incl. \(medium.count) Medium)" : ""
+            guard promptYesNo("\n  Reclaim " + s.hexBold(0x8AC776, total.formatted) + extra + "?", defaultYes: true) else {
+                printErr("  Cancelled — nothing was changed.")
+                throw ExitCode(CleanerExitCode.cancelled.rawValue)
             }
-            let title = "Reclaim up to \(result.totalReclaimable.formatted) across \(sources.count) sources:"
-            guard let picked = MultiSelect.run(title: title, items: items, style: s) else {
-                printErr("  Cancelled — nothing was changed."); throw ExitCode(CleanerExitCode.cancelled.rawValue)
-            }
-            chosen = picked
-        } else {
-            // Non-interactive without --yes: show and refuse to act (safety).
-            printOut(rt.renderer.analyze(result, elapsed: elapsed, names: names, verbose: options.verbose))
-            printErr("  Not a terminal — run with " + s.hexBold(0x8AC776, "--yes") + " to clean non-interactively.")
-            throw ExitCode(CleanerExitCode.cancelled.rawValue)
         }
-
-        // Never clean Dangerous (defense in depth; detectors aren't in this scan anyway).
-        let selected = chosen.flatMap { sources[$0].findings }.filter { $0.risk != .dangerous }
-        if selected.isEmpty { printOut("\n  " + s.hex(0x8B98A5, "Nothing selected.")); return }
 
         let plan = CleanPlan(actions: selected.map { .init(finding: $0, disposition: $0.proposedDisposition) })
         let report = rt.cleanupEngine.execute(plan, session: rt.session,
@@ -128,10 +118,11 @@ struct GlobalOptions: ParsableArguments {
 func printOut(_ s: String) { print(s) }
 func printErr(_ s: String) { FileHandle.standardError.write(Data((s + "\n").utf8)) }
 
-func promptYesNo(_ question: String) -> Bool {
-    guard isatty(fileno(stdin)) == 1 else { return false }
-    FileHandle.standardError.write(Data("\(question) [y/N] ".utf8))
-    guard let line = readLine(strippingNewline: true)?.lowercased() else { return false }
+func promptYesNo(_ question: String, defaultYes: Bool = false) -> Bool {
+    guard isatty(fileno(stdin)) == 1 else { return defaultYes }
+    FileHandle.standardError.write(Data("\(question) \(defaultYes ? "[Y/n]" : "[y/N]") ".utf8))
+    guard let line = readLine(strippingNewline: true)?.lowercased() else { return defaultYes }
+    if line.isEmpty { return defaultYes }
     return line == "y" || line == "yes"
 }
 
