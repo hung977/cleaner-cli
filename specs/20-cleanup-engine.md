@@ -231,7 +231,7 @@ Trash category may propose it (gate ④).
 
 ### 6.4 Purge (permanent — escalation only)
 
-Reached only via explicit escalation (DM-5: `--no-stage` + typed confirmation, or `staging purge`
+Reached only via explicit escalation (DM-5: `--no-stage` + confirmation, or retention auto-purge
 of already-staged items — spec 21). `unlinkat`/fd-relative recursive removal (spec 16 §11).
 Journaled write-intent before the irreversible unlink. Purge of live items (not from staging) is
 the one path with no rollback — the audit records it emphatically.
@@ -390,9 +390,9 @@ Benchmarks `dispose-throughput`, fault-injection `T-crash-consistency`, `T-idemp
   do we ever *want* cross-volume stage, or should we require staging on the item's own volume and
   only fall to copy for the rare mismatch? *Leaning: prefer per-volume staging roots to keep
   rename atomicity; copy path is the exception (spec 21).*
-- **OQ-20.4** For `dangerous` items, do we require re-typed confirmation at clean time if a long
-  gap passed since planning, or trust the plan's `ConfirmationState`? *Leaning: trust the plan
-  within a session; a new session re-confirms. Coordinate with spec 25.*
+- **OQ-20.4** *(moot in v0.6: risk-tiered typed confirmation was removed)* Confirmation is the
+  single `[Y·s·n]` prompt at clean time (or `--yes`); every disposition is staged and recoverable
+  via `cleaner undo`, so there is no per-`dangerous`-item re-confirmation to coordinate.
 - **OQ-20.5** Partial-failure: offer an optional `--atomic` all-or-nothing mode that rolls back
   staged items on any failure? *Leaning: no for v1 (surprising, slow); per-item partial is the
   documented contract. Revisit if users ask.*

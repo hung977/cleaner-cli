@@ -3,359 +3,292 @@
 > **Phase B · Depends on:** 00-constitution, 06-functional-requirements, 07-nonfunctional-requirements ·
 > **Depended on by:** 09 (IA), 11–13, 24 (config), 25 (TUI), 26 (CLI UX), 27 (errors), 31 (tests).
 >
-> The complete, normative surface of the `cleaner` binary. Command tree, per-command synopsis,
-> flags, examples, exit codes (Constitution Article 7 — reused, not re-invented), the
-> **stdout/stderr contract**, and **versioned JSON schemas** (`schemaVersion`). Built on
-> swift-argument-parser (CC-2): usage errors ⇒ exit `2`; `--help` on every node; completions
-> (bash/zsh/fish). RFC-2119 keywords are normative.
+> The complete, normative surface of the `cleaner` binary as shipped in **v0.6**. Command tree,
+> per-command synopsis, flags, examples, exit codes (Constitution Article 7 — reused, not
+> re-invented), the **stdout/stderr contract**, and **versioned JSON schemas** (`schemaVersion`).
+> Built on swift-argument-parser (CC-2): usage errors ⇒ exit `2`; `--help` on every node;
+> completions (bash/zsh/fish). RFC-2119 keywords are normative.
 
 ## 1. Command tree
 
 ```
-cleaner                         # interactive TUI (no subcommand + TTY) → FR-076
-├── analyze        [paths…]     # read-only usage analysis + storage report   (FR-070)
-├── audit          [paths…]     # detection advisories, risk-ranked           (FR-071)
-├── clean          [selectors]  # preview → confirm → dispose (primary verb)  (FR-075)
-├── optimize                    # curated one-shot safe maintenance           (FR-074)
-├── doctor                      # environment health checks                   (FR-072)
-├── report         [session]    # render a persisted session's results        (FR-073)
+cleaner                          # DEFAULT: scan all enabled plugins → grouped summary → prompt → clean
+├── undo            [session]     # restore the last (or a specific) clean from staging   (FR-088)
+├── find                          # read-only detectors — list only, never delete
+│   ├── large       [paths…]      # rank the largest files under paths                    (FR-003)
+│   └── dupes       [paths…]      # find duplicate files under paths                       (FR-004)
 │
-├── plugins                     # plugin management
-│   ├── list
-│   └── info <plugin-id>
-├── config                      # configuration management
-│   ├── get   <key>
-│   ├── set   <key> <value>
-│   ├── edit
-│   └── validate [file]
-├── staging                     # quarantine management (rollback surface)
-│   ├── list
-│   ├── restore <session|item> [--force]
-│   └── purge   <session|item|--older-than>
-├── profile                     # profile management
-│   ├── list
-│   ├── show   <name>
-│   ├── save   <name>
-│   └── delete <name>
-├── completion  <bash|zsh|fish> # emit shell completion script
-├── version                     # print version/build info      (also: --version)
-└── self-update                 # v2 STUB — refuses in v1        (exit 10)
+│  # advanced — hidden from `cleaner --help` (shouldDisplay:false) but fully runnable:
+├── docker          [--prune]     # safe Docker prunes only (never volumes/system)         (FR-060)
+├── brew            [--run]       # Homebrew cleanup / cache prune                          (FR-061)
+├── doctor          [--ci]        # environment health checks                              (FR-072)
+└── profile
+    └── list                      # list available profiles                                (FR-095)
 ```
 
-**Dispatch rules.** `cleaner` with **no subcommand** and a **TTY** ⇒ interactive TUI (FR-076).
-No subcommand and **no TTY** ⇒ print help, exit `2`. Unknown subcommand ⇒ exit `2`. Every node
-supports `-h/--help`.
+**Dispatch rules.** `cleaner` with **no subcommand** runs the default scan-and-clean flow (§4).
+Unknown subcommand ⇒ exit `2`. Every node supports `-h/--help`. The four advanced nodes (`docker`,
+`brew`, `doctor`, `profile`) are marked `shouldDisplay:false` — they do not appear in the top-level
+`cleaner --help` listing but are documented here and respond to `--help` when named directly.
+
+**Removed since earlier drafts (do not use).** `analyze` → `cleaner --dry-run`; `clean` → the
+default `cleaner`; `optimize` → the **NEXT STEPS** block printed under `--dry-run`; `report` →
+`--json` / `--md`; `staging` → `undo`. Removed flags: `--all`, `--include medium`. There are **no
+risk levels** (no 🟢🟡🔴, no Safe/Medium/Dangerous) anywhere in the surface.
 
 ---
 
 ## 2. Global flags
 
-Available on every command (parsed by the root; subcommands inherit). Precedence:
+Available on the default command and inherited by subcommands where meaningful. Precedence:
 CLI flag > env var > config file > built-in default.
 
 | Flag | Type | Default | Meaning |
 |---|---|---|---|
-| `-v, --verbose` | count | 0 | Increase human-readable detail (repeatable: `-vv`). (FR-086) |
-| `--debug` | bool | false | Emit diagnostic traces (timings, decisions, adapter calls) to **stderr**. (FR-086/NFR-112) |
-| `--dry-run` | bool | false | Compute and show the full plan; dispose of nothing. Exit `0`. (FR-082) |
-| `-y, --yes` | bool | false | Auto-confirm 🟢 (and 🟡 with `--include medium`); NEVER 🔴. (FR-083) |
-| `--json` | bool | false | Emit versioned machine-readable result on **stdout**; suppress chrome. (FR-084) |
-| `--ci` | bool | false | Non-interactive; implies `--no-tui --no-color`; stable exit codes; never prompts. (FR-085) |
-| `--no-tui` | bool | false | Disable full-screen TUI; use linear plain output. (NFR-070) |
+| `--dry-run` | bool | false | Compute and show the full plan plus a **NEXT STEPS** block; clean nothing. Exit `0`. (FR-082) |
+| `--yes` | bool | false | Clean everything found with **no prompt** (automation/CI). (FR-083) |
+| `--json` | bool | false | Emit one versioned machine document on **stdout**; suppress chrome. (FR-084) |
+| `--md` | bool | false | Emit a Markdown report (`\| Source \| Reclaimable \|`) on **stdout**. |
+| `-v, --verbose` | bool | false | Expand each grouped source to show its underlying items. (FR-086) |
 | `--no-color` | bool | false | Disable color/SGR (also honors `NO_COLOR`). (NFR-071) |
-| `--config <path>` | path | `~/.cleaner/config.yml` | Use an alternate config file. (FR-096, spec 24) |
-| `--profile <name>` | string | — | Apply a saved profile's plugin selection + options. (FR-095) |
-| `--include <sel>` | list | — | Include by plugin-id / category / risk (`safe\|medium\|dangerous`) / path glob. (FR-094) |
-| `--exclude <sel>` | list | — | Exclude by the same selector grammar. (FR-094) |
-| `--plugins <ids>` | list | all enabled | Restrict the run to these plugin ids. (FR-041) |
+| `--include <ids>` | list | — | Restrict the run to these plugin ids (comma-separated). (FR-094) |
+| `--exclude <ids>` | list | — | Drop these plugin ids from the run (comma-separated). (FR-094) |
+| `--profile <name>` | string | — | Apply a saved profile's plugin selection. (FR-095) |
 | `-h, --help` | bool | — | Show help for the node. |
 
-**Selector grammar** (`--include`/`--exclude`): comma-separated tokens, each one of
-`plugin:<id>`, `category:<name>`, `risk:<safe|medium|dangerous>`, or a `path:<glob>`.
-Bare tokens are matched as plugin-id then category. **Precedence:** `--exclude` wins over
-`--include`; `--plugins` narrows the universe first; deny-list/protected paths (Article 5)
-always win over everything.
+**Selector grammar** (`--include` / `--exclude`): a comma-separated list of **plugin ids**
+(e.g. `derived-data,swiftpm,docker`). There is no category/risk/path grammar. **Precedence:**
+`--exclude` wins over `--include`; deny-list / protected paths (Article 5) always win over
+everything.
 
-**Environment variables:** `CLEANER_HOME` (overrides `~/.cleaner`), `NO_COLOR`,
-`CLEANER_CONFIG`, `CLEANER_PROFILE`, `CLEANER_LOG_LEVEL`. CLI flags override env.
+**Environment variables:** `CLEANER_HOME` (overrides `~/.cleaner`), `NO_COLOR`, `CLEANER_PROFILE`,
+`CLEANER_LOG_LEVEL`. CLI flags override env.
 
-**Conflicts.** `--json`/`--ci` imply non-interactive: prompts are errors ⇒ if confirmation is
-required and neither `--yes` nor a signed policy is present, exit `2` (usage) for `clean`/
-`optimize`. `--dry-run` with `--yes` is legal (yes is a no-op under dry-run).
+**Conflicts.** `--json` and `--md` are mutually exclusive output modes and both imply
+non-interactive (no prompt). `--dry-run` cleans nothing, so `--yes` is a no-op under it (legal but
+inert). `--yes` and `--dry-run` together preview only.
 
 ---
 
 ## 3. stdout / stderr contract (normative, all commands)
 
-1. **stdout carries the result.** In `--json` mode, stdout contains **exactly one** JSON
-   document (§9 schema) and nothing else — no logs, no progress, no color. Human mode: stdout
-   carries the human-readable result/report.
-2. **stderr carries chrome.** Progress bars, spinners, TUI frames, prompts, `--verbose`/
-   `--debug` diagnostics, and warnings go to **stderr**. This keeps `cleaner … --json | jq`
-   clean (NFR-112).
-3. **Exit code is the contract for scripts** (Article 7). `--json` output additionally carries
-   a machine field mirroring the exit reason.
-4. **TTY detection:** progress/TUI render only when stderr is a TTY and neither `--no-tui`/
-   `--ci`/`--json` is set; otherwise output is linear plain text.
-5. **Idempotent output:** given identical inputs, human and JSON output are byte-stable modulo
-   an explicitly-labeled timestamp/duration block (NFR-031).
+1. **stdout carries the result.** In `--json` mode, stdout contains **exactly one** JSON document
+   (§9 schema) and nothing else — no logs, no progress, no color. In `--md` mode, stdout carries
+   exactly the Markdown report. Human mode: stdout carries the human-readable summary/report.
+2. **stderr carries chrome.** Progress lines, the confirm prompt, `--verbose` detail is on stdout
+   as part of the report, but interactive prompts and warnings go to **stderr**. This keeps
+   `cleaner --json | jq` clean (NFR-112).
+3. **Exit code is the contract for scripts** (Article 7). `--json` output additionally carries a
+   machine field mirroring the exit reason.
+4. **TTY detection:** the confirm prompt renders only when stdin is a TTY and neither `--yes`,
+   `--json`, nor `--md` is set; otherwise output is linear plain text and the run either cleans
+   (`--yes`) or previews (default without a TTY behaves as `--dry-run`, exit `0`).
+5. **Idempotent output:** given identical inputs, human, Markdown, and JSON output are byte-stable
+   modulo an explicitly-labeled timestamp/duration block (NFR-031).
 
 ---
 
-## 4. Action commands
+## 4. The default command — `cleaner`
 
-### 4.1 `analyze` — read-only usage analysis (FR-070)
+**Synopsis:** `cleaner [--dry-run] [--yes] [--json] [--md] [-v] [--no-color]
+[--include <ids>] [--exclude <ids>] [--profile <name>]`
 
-**Synopsis:** `cleaner analyze [paths…] [--min-size <size>] [--top <n>] [--depth <n>]
-[--duplicates] [--old <days>] [global flags]`
+**Description.** With no subcommand, `cleaner` scans **all enabled plugins** (narrowed by
+`--include` / `--exclude` / `--profile`), then prints a **grouped summary by source** — one line per
+source, **name left, size right**, no risk colours or levels, no emoji, largest first. It then
+prompts:
 
-**Description.** Read-only scan (never mutates). Produces a storage report (capacity/used/
-free/purgeable/reclaimable) and size-attributed breakdown by category and plugin, plus optional
-large-file / duplicate / old-file findings. Always exits `0` on success; `4` if a needed root is
-inaccessible (permission), `3` if some roots were skipped.
+```
+Clean all <size>? [Y = all · s = select each · n = cancel]
+```
 
-**Arguments:** `paths…` — one or more roots (default: `$HOME`; `--all-volumes` for every mounted
-local volume).
+- **`Y` / Enter** → clean everything found.
+- **`s`** → walk each source in turn, asking `clean? [y/N]` per source.
+- **`n`** → cancel (exit `5`).
 
-**Flags:** `--min-size <size>` (large-file threshold, default 1GiB; accepts `500MB`, `2GiB`),
-`--top <n>` (limit ranked lists, default 50), `--depth <n>` (tree depth for breakdown),
-`--duplicates` (run duplicate pipeline, FR-004), `--old <days>` (old-file cutoff, FR-005),
-`--all-volumes`, `--no-cache` (ignore incremental cache, FR-007).
+Cleaned items are **moved to staging** (`~/.cleaner/staging/<uuid>`), recoverable via
+`cleaner undo` (FR-087/088). The run is idempotent (FR-112): a second immediate run finds nothing
+and exits `0`.
+
+**Output modes (non-interactive, no prompt):**
+- **`--dry-run`** — print the grouped summary plus a **NEXT STEPS** block (what to run to actually
+  reclaim, and how to undo), change nothing, exit `0`.
+- **`--yes`** — clean everything found without prompting (automation/CI).
+- **`--json`** — emit the machine document (§9), no prompt.
+- **`--md`** — emit a Markdown report with columns `| Source | Reclaimable |` (no Risk column), no
+  prompt.
+- **`-v/--verbose`** — expand each grouped source to list its underlying items (human and Markdown).
 
 **Examples:**
 ```bash
-cleaner analyze                          # analyze $HOME, human report
-cleaner analyze / --all-volumes --json   # whole machine, JSON to stdout
-cleaner analyze ~/Developer --min-size 500MB --top 20
-cleaner analyze --duplicates --old 365 --json | jq '.findings.duplicates'
+cleaner                                  # scan, summarize, prompt to clean all / select / cancel
+cleaner --dry-run                        # preview + NEXT STEPS block; cleans nothing
+cleaner --yes                            # clean everything, no prompt (CI/automation)
+cleaner --include derived-data,swiftpm   # only these plugins
+cleaner --exclude docker --profile dev   # profile selection minus docker
+cleaner --md > cleanup.md                # Markdown report to a file
+cleaner --json | jq '.result.totalReclaimBytes'
 ```
-**Exit codes:** `0` ok · `3` partial (roots skipped) · `4` permission · `5` cancelled ·
-`10` unsupported env.
 
-### 4.2 `audit` — detection advisories (FR-071)
+**Exit codes:** `0` ok (incl. nothing to do / `--dry-run`) · `3` partial (some items failed/skipped)
+· `4` permission · `5` cancelled (`n` at the prompt) · `6` config · `7` plugin · `8` safety
+(invariant abort) · `10` precondition · `11` entitlement (required entitlement missing).
 
-**Synopsis:** `cleaner audit [paths…] [--categories <list>] [--min-savings <size>]
-[--sort <size|risk|age>] [global flags]`
+---
 
-**Description.** Runs detection (FR-050–061): unused apps, orphan packages, obsolete SDKs, stale
-DerivedData, old runtimes/archives, unnecessary localizations, temp downloads, duplicate cache,
-zombie dirs. Read-only; acts on nothing. Emits a prioritized, risk-ranked opportunity list with
-evidence. In `--ci`, maps to CI health codes.
+## 5. `undo` — restore a clean from staging (FR-088)
 
-**Flags:** `--categories <list>`, `--min-savings <size>` (hide opportunities below N),
-`--sort <size|risk|age>` (default `size`), `--include/--exclude` (risk/category filters).
+**Synopsis:** `cleaner undo [session-id] [--list] [--json]`
+
+**Description.** Restores staged items to their original locations. With **no argument**, undoes the
+**most recent** clean session; with a `session-id`, undoes that specific session. `--list` shows the
+available staged sessions (id, date, item count, total staged bytes) instead of restoring; `--json`
+renders either the restore result or the list as machine output.
 
 **Examples:**
 ```bash
-cleaner audit                            # ranked advisories for $HOME
-cleaner audit --sort risk --json
-cleaner audit --ci                       # exit 0 healthy / 3 warnings / 1 critical
+cleaner undo                     # restore the last clean
+cleaner undo 6f1c9c2e            # restore a specific session
+cleaner undo --list              # show restorable sessions
+cleaner undo --list --json
 ```
-**Exit codes (interactive):** `0` ok · `3` partial · `4` permission.
-**Exit codes (`--ci`):** `0` no significant reclaimable / healthy · `3` warnings (reclaimable
-found) · `1` critical (e.g. free space below headroom).
 
-### 4.3 `clean` — dispose selected junk (FR-075) — **primary destructive verb**
+**Exit codes:** `0` ok · `2` unknown session-id / usage · `3` partial (some items couldn't be
+restored) · `4` permission · `8` safety.
 
-**Synopsis:** `cleaner clean [selectors] [--stage|--trash|--no-stage] [--min-size <size>]
-[--older-than <days>] [-y] [--dry-run] [global flags]`
+---
 
-**Description.** Runs the **preview → confirm → dispose** pipeline (principle 1). Selects plugins
-via `--plugins`/`--include`/`--exclude`/`--profile`; scans; classifies (🟢🟡🔴); presents a
-preview (paths, sizes, risk, disposition, recoverability, projected Reclaim); then, on
-confirmation, disposes. **Default disposition: `stage`** (`~/.cleaner/staging/<uuid>`, FR-087).
-🟢 pre-selected; 🟡 shown but not pre-selected; 🔴 shown, never pre-selected, requires **typed**
-confirmation (Article 4.1). Idempotent (FR-112).
+## 6. `find` — read-only detectors (list only)
 
-**Disposition flags (mutually exclusive):** `--stage` (default, reversible), `--trash` (route to
-macOS Trash via `NSWorkspace.recycle`, FR-090), `--no-stage` (permanent purge; requires explicit
-confirmation and MUST NOT run under `--ci`/`--json` without `--yes` **and** a signed policy —
-Article 4.4).
+Both subcommands are strictly read-only: they **list** and never delete or stage anything.
 
-**Other flags:** `--min-size`, `--older-than <days>`, `--keep <n>` (retain most-recent N per
-group, e.g. logs), `--assume-fda` (skip the Full-Disk-Access probe when already granted).
+### 6.1 `find large`
 
-**Examples:**
+**Synopsis:** `cleaner find large [--min <size>] [--top <n>] [paths…]`
+
+Ranks the largest files under the given roots (default `$HOME`). `--min` sets the size threshold
+(default `100MB`); `--top` caps the ranked list (default `20`).
+
 ```bash
-cleaner clean --plugins derived-data,swiftpm            # interactive preview+confirm
-cleaner clean --include risk:safe --yes                 # auto-clean all 🟢
-cleaner clean --profile developer-daily --yes
-cleaner clean --include category:docker --dry-run --json
-cleaner clean --include risk:dangerous                  # typed confirmation required
-cleaner clean --plugins trash --no-stage --yes          # empty Trash permanently
+cleaner find large                          # top 20 files ≥ 100MB under $HOME
+cleaner find large --min 500MB --top 50 ~/Developer
+cleaner find large --json | jq '.result.largeFiles'
 ```
-**Exit codes:** `0` ok (incl. nothing to do) · `3` partial (some items failed/skipped) ·
-`4` permission · `5` cancelled · `6` config · `7` plugin · `8` safety (invariant abort) ·
-`2` usage (e.g. `--no-stage` non-interactive without policy).
 
-### 4.4 `optimize` — curated safe one-shot (FR-074)
+### 6.2 `find dupes`
 
-**Synopsis:** `cleaner optimize [-y] [--dry-run] [global flags]`
+**Synopsis:** `cleaner find dupes [--min <size>] [paths…]`
 
-**Description.** Convenience "make space now": a fixed curated set of mostly-🟢 categories (safe
-caches, temp files, crash reports, Trash *report*, logs trim) run preview-first. **Never**
-includes 🔴. `--include medium` may opt-in 🟡 (OQ-06.1). Equivalent to a built-in conservative
-profile; honors `--yes`.
+Finds duplicate files under the given roots (default `$HOME`). `--min` sets the minimum file size to
+consider (default `1MB`).
 
-**Examples:**
 ```bash
-cleaner optimize                 # preview curated safe cleanup, confirm
-cleaner optimize --yes           # run it non-interactively (🟢 only)
-cleaner optimize --dry-run --json
+cleaner find dupes                          # duplicates ≥ 1MB under $HOME
+cleaner find dupes --min 10MB ~/Downloads
+cleaner find dupes --json | jq '.result.duplicates'
 ```
-**Exit codes:** as `clean`.
 
-### 4.5 `doctor` — environment health (FR-072)
+**Exit codes (both):** `0` ok · `3` partial (roots skipped) · `4` permission.
 
-**Synopsis:** `cleaner doctor [--fix] [global flags]`
+---
 
-**Description.** Checks and reports 🟢/🟡/🔴 per item: OS version/support, Full Disk Access,
-admin availability, TTY presence, config validity, plugin load status, staging integrity,
-free-space headroom, adapter tool availability (docker/brew/xcrun). `--fix` performs safe
-auto-remediations only (e.g. repair a corrupt staging index, recreate `~/.cleaner` layout).
+## 7. Advanced commands (hidden from `--help`)
 
-**Examples:**
+These four nodes are `shouldDisplay:false`: absent from the top-level help listing, fully runnable,
+and responsive to `--help` when named directly.
+
+### 7.1 `docker` — safe Docker prunes (FR-060)
+
+**Synopsis:** `cleaner docker [--prune] [--yes]`
+
+Reports and, with `--prune`, runs **safe** Docker reclamation only — build cache and dangling
+images. It **never** touches volumes or runs `system prune`. `--yes` skips the confirmation.
+
+```bash
+cleaner docker                   # report reclaimable Docker space
+cleaner docker --prune           # prune safe artifacts (confirm first)
+cleaner docker --prune --yes     # prune without prompting
+```
+
+**Exit codes:** `0` ok · `3` partial · `5` cancelled · `7` plugin · `10` precondition (docker not
+installed/running).
+
+### 7.2 `brew` — Homebrew cleanup (FR-061)
+
+**Synopsis:** `cleaner brew [--run] [--yes]`
+
+Reports reclaimable Homebrew cache/cleanup and, with `--run`, performs it. `--yes` skips the
+confirmation.
+
+```bash
+cleaner brew                     # report reclaimable brew space
+cleaner brew --run               # run brew cleanup (confirm first)
+cleaner brew --run --yes
+```
+
+**Exit codes:** `0` ok · `3` partial · `5` cancelled · `7` plugin · `10` precondition (brew not
+installed).
+
+### 7.3 `doctor` — environment health (FR-072)
+
+**Synopsis:** `cleaner doctor [--ci]`
+
+Checks and reports the environment: OS version/support, disk access, config validity, plugin load
+status, staging integrity, adapter tool availability (docker/brew). `--ci` maps health to CI exit
+codes.
+
 ```bash
 cleaner doctor
 cleaner doctor --json
 cleaner doctor --ci              # 0 healthy / 3 warnings / 1 critical
 ```
+
 **Exit codes (interactive):** `0` all healthy · `3` warnings present · `1` critical present ·
 `6` config invalid.
 **Exit codes (`--ci`):** `0` healthy · `3` warnings · `1` critical (Article 7 mapping).
 
-### 4.6 `report` — render a persisted session (FR-073)
+### 7.4 `profile list` (FR-095)
 
-**Synopsis:** `cleaner report [session-id] [--format <human|json|markdown|html>]
-[--output <path>] [--last] [global flags]`
+**Synopsis:** `cleaner profile list [--json]`
 
-**Description.** Renders a prior session's stored results (`~/.cleaner/reports`) without
-rescanning. `--last` (default when no id) picks the most recent session; `report list` sub-form
-lists available sessions.
+Lists available profiles (names + descriptions). A profile is applied to the default run via
+`--profile <name>`.
 
-**Examples:**
-```bash
-cleaner report --last --format markdown
-cleaner report 6f1c… --format html --output ~/Desktop/cleanup.html
-cleaner report --json
-```
-**Exit codes:** `0` ok · `2` unknown session-id/format · `6` corrupt report store.
-
----
-
-## 5. Management: `plugins`
-
-### `plugins list`
-**Synopsis:** `cleaner plugins list [--enabled|--disabled] [global flags]`
-Lists all plugins: id, category, default risk, enabled state, native/fallback status.
-```bash
-cleaner plugins list
-cleaner plugins list --json
-```
-Exit: `0`.
-
-### `plugins info <plugin-id>`
-Shows a plugin's declared roots, risk defaults, recoverability, native API + shell fallback,
-options, and any adapter prerequisites. Unknown id ⇒ exit `2`.
-```bash
-cleaner plugins info docker
-```
-
----
-
-## 6. Management: `config`
-
-`config get <key>` · `config set <key> <value>` · `config edit` (opens `$EDITOR` on
-`~/.cleaner/config.yml`) · `config validate [file]` (schema-check; exit `6` on invalid).
-
-```bash
-cleaner config get scan.minLargeFileSize
-cleaner config set staging.retentionDays 30
-cleaner config edit
-cleaner config validate ./team-config.yml
-```
-Exit: `0` ok · `2` unknown key/usage · `6` invalid config. Keys are dotted paths into the
-config schema (spec 24). `set` MUST re-validate before persisting and MUST reject writes to
-deny-list-relevant keys that would weaken safety without an explicit `--force-unsafe` + ack.
-
----
-
-## 7. Management: `staging` (rollback surface, FR-088/089)
-
-### `staging list`
-Lists staged sessions/items: session UUID, date, item count, total staged bytes, original
-paths, expiry (retention). `--session <uuid>` drills into one.
-```bash
-cleaner staging list
-cleaner staging list --json
-```
-
-### `staging restore <session|item> [--force]`
-Restores staged items to their original locations (FR-088). Refuses if destination is occupied
-unless `--force`. Records the restore in the audit trail.
-```bash
-cleaner staging restore 6f1c…                 # restore a whole session
-cleaner staging restore 6f1c…:42 --force      # restore one item, overwrite
-```
-Exit: `0` ok · `3` partial (some couldn't restore) · `2` unknown id · `8` safety.
-
-### `staging purge <session|item|--older-than <days>>`
-**Permanent** deletion of staged items — the only irreversible operation (Article 3). Requires
-confirmation (typed in interactive; `--yes` in scripts). `--older-than <days>` and `--all`
-supported; retention-based auto-purge is driven by config (spec 24).
-```bash
-cleaner staging purge --older-than 30 --yes
-cleaner staging purge 6f1c…
-```
-Exit: `0` ok · `2` unknown id/usage · `5` cancelled.
-
----
-
-## 8. Management: `profile`, `completion`, `version`, `self-update`
-
-### `profile list|show|save|delete` (FR-095)
-`profile list` (names + descriptions), `profile show <name>` (plugin selection + options),
-`profile save <name>` (persist current selectors/options as `~/.cleaner/profiles/<name>.yml`),
-`profile delete <name>`. Built-ins `developer-daily`, `conservative`, `aggressive` ship
-read-only. Apply a profile on any action command via `--profile <name>`.
 ```bash
 cleaner profile list
-cleaner clean --profile conservative --yes
-cleaner profile save my-weekly
+cleaner --profile conservative --yes
 ```
-Exit: `0` · `2` unknown name (show/delete) · `6` invalid profile file.
 
-### `completion <bash|zsh|fish>`
-Emits the shell completion script to stdout (swift-argument-parser generated).
-```bash
-cleaner completion zsh > ~/.zsh/completions/_cleaner
-```
-Exit: `0` · `2` unknown shell.
+**Exit codes:** `0` ok · `6` invalid profile file.
 
-### `version` / `--version`
-Prints semantic version, git hash, build date, Swift version, min-OS, arch slices. `--json`
-supported. `cleaner --version` is equivalent to `cleaner version`.
+---
+
+## 8. Distribution & version
+
+**Install (Homebrew tap, build-from-source):**
 ```bash
-cleaner version --json
+brew tap hung977/tap
+brew trust hung977/tap
+brew install cleaner
 ```
+
+**Version.** `cleaner --version` prints the semantic version, git hash, build date, Swift version,
+min-OS, and arch slices.
+
+```bash
+cleaner --version
+```
+
 Exit: `0`.
-
-### `self-update` — **v2 STUB**
-Reserved for v2. In v1 it MUST print a message directing the user to Homebrew
-(`brew upgrade cleaner`) / GitHub Releases and exit `10` (precondition/unsupported). It MUST NOT
-perform any network I/O in v1 (principle 10).
-```bash
-cleaner self-update            # → "not available in v1; use brew upgrade cleaner", exit 10
-```
 
 ---
 
 ## 9. JSON output schemas (versioned)
 
-All `--json` output is a single UTF-8 JSON document on stdout, top-level field
-**`schemaVersion`** (semver string, v1 = `"1.0.0"`). Consumers MUST ignore unknown fields
-(forward-compat) and MUST branch on `schemaVersion` major. Byte sizes are integers (bytes);
-sizes also carry a `humanSize` string. Every result echoes `exitCode` and `exitReason`.
+All `--json` output is a single UTF-8 JSON document on stdout, top-level field **`schemaVersion`**
+(semver string, v0.6 = `"1.0.0"`). Consumers MUST ignore unknown fields (forward-compat) and MUST
+branch on `schemaVersion` major. Byte sizes are integers (bytes); sizes also carry a `humanSize`
+string. Every result echoes `exitCode` and `exitReason`.
 
 ### 9.1 Envelope (common to all commands)
 ```json
@@ -373,51 +306,49 @@ sizes also carry a `humanSize` string. Every result echoes `exitCode` and `exitR
 }
 ```
 
-### 9.2 `analyze` result
+### 9.2 Default `cleaner` result (also the shape `--dry-run` returns)
 ```json
 "result": {
-  "roots": ["/Users/me"],
-  "volume": { "capacityBytes": 4000e9, "usedBytes": 3200e9, "freeBytes": 800e9,
-              "purgeableBytes": 120e9, "reclaimableBytes": 45e9 },
-  "byCategory": [ { "category": "developer", "allocatedBytes": 30e9, "logicalBytes": 31e9,
-                    "itemCount": 12045, "plugins": ["derived-data","swiftpm"] } ],
-  "findings": {
-    "largeFiles": [ { "path": "…", "allocatedBytes": 2e9, "mtime": "…", "kind": "Disk Image" } ],
-    "duplicates": [ { "hash": "sha256:…", "count": 3, "reclaimBytes": 1.2e9,
-                      "keep": "…", "paths": ["…","…","…"] } ],
-    "oldFiles": [ { "path": "…", "atime": "…", "allocatedBytes": 5e8 } ]
-  }
-}
-```
-
-### 9.3 `clean` / `optimize` result (also the shape `--dry-run` returns)
-```json
-"result": {
-  "disposition": "stage",
   "stagingPath": "/Users/me/.cleaner/staging/6f1c…",
   "totalReclaimBytes": 12884901888,
   "humanSize": "12.0 GiB",
+  "sources": [
+    { "id": "derived-data", "name": "Xcode DerivedData",
+      "reclaimBytes": 5368709120, "humanSize": "5.0 GiB", "itemCount": 12 }
+  ],
   "items": [
-    { "id": "derived-data:0", "plugin": "derived-data", "category": "developer",
+    { "id": "derived-data:0", "plugin": "derived-data",
       "path": "…/DerivedData/App-abc", "allocatedBytes": 5368709120,
-      "risk": "safe", "riskIcon": "🟢", "safetyScore": 96,
-      "recoverability": "manual", "disposition": "stage", "status": "staged",
+      "risk": "safe", "recoverability": "manual", "status": "staged",
       "evidence": { "regenerable": true, "lastAccess": "…" } }
   ],
-  "skipped": [ { "path": "…", "reason": "locked", "risk": "medium" } ],
+  "skipped": [ { "path": "…", "reason": "locked" } ],
   "counts": { "planned": 42, "succeeded": 40, "skipped": 2, "failed": 0 }
 }
 ```
 
-### 9.4 `audit` result
+> **Note.** The `risk` string on `items` is **vestigial metadata only** — it is retained for
+> forward-compatibility but gates no behaviour and has no human-surface counterpart (no icons, no
+> tiers, no auto-selection rules). Consumers SHOULD NOT branch on it.
+
+### 9.3 `find large` / `find dupes` result
 ```json
 "result": {
-  "opportunities": [
-    { "id": "unused-app:0", "type": "unusedApp", "risk": "dangerous", "riskIcon": "🔴",
-      "reclaimBytes": 800e6, "path": "/Applications/Foo.app", "advisoryOnly": true,
-      "evidence": { "lastUsed": "2023-01-…", "launchServicesSeen": false } }
-  ],
-  "totals": { "count": 37, "reclaimBytes": 45e9 }
+  "roots": ["/Users/me"],
+  "largeFiles": [ { "path": "…", "allocatedBytes": 2147483648, "mtime": "…", "kind": "Disk Image" } ],
+  "duplicates": [ { "hash": "sha256:…", "count": 3, "reclaimBytes": 1288490188,
+                    "keep": "…", "paths": ["…","…","…"] } ]
+}
+```
+`find large` populates `largeFiles`; `find dupes` populates `duplicates`.
+
+### 9.4 `undo --list` result
+```json
+"result": {
+  "sessions": [
+    { "sessionId": "6f1c…", "cleanedAt": "…", "itemCount": 40,
+      "stagedBytes": 12884901888, "humanSize": "12.0 GiB" }
+  ]
 }
 ```
 
@@ -426,21 +357,16 @@ sizes also carry a `humanSize` string. Every result echoes `exitCode` and `exitR
 "result": {
   "overall": "warning",
   "checks": [
-    { "id": "fullDiskAccess", "status": "warning", "icon": "🟡",
-      "message": "Full Disk Access not granted; some caches unreadable",
-      "remedy": "Grant in System Settings › Privacy & Security" }
+    { "id": "diskAccess", "status": "warning",
+      "message": "Some caches unreadable without additional access",
+      "remedy": "Grant access in System Settings › Privacy & Security" }
   ]
 }
 ```
 
-### 9.6 `staging list`, `plugins list`, `report`
-Follow the same envelope; `result` is an array (`sessions` / `plugins`) or the persisted
-session document (`report`). Each documented in specs 21, 13, and 28 respectively; all carry
-`schemaVersion`.
-
 **Schema governance.** JSON schemas are versioned independently per command family under
-`schemaVersion`; a breaking field change bumps the major. The canonical schema files live with
-the Reporting module and are snapshot-tested (spec 31).
+`schemaVersion`; a breaking field change bumps the major. The canonical schema files live with the
+Reporting module and are snapshot-tested (spec 31).
 
 ---
 
@@ -448,37 +374,36 @@ the Reporting module and are snapshot-tested (spec 31).
 
 | Code | Name | Where it appears |
 |---|---|---|
-| 0 | ok | any command success / nothing to do |
-| 1 | general / critical | unclassified error; `--ci` doctor/audit "critical" |
-| 2 | usage | bad args/flags, unknown id/key/shell, non-interactive confirm required |
-| 3 | partial / warnings | some items skipped/failed; `--ci` doctor/audit "warnings" |
-| 4 | permission | Full Disk Access / admin not granted |
-| 5 | cancelled | Ctrl-C / `q` / timeout |
+| 0 | ok | any command success / nothing to do / `--dry-run` |
+| 1 | general / critical | unclassified error; `--ci` doctor "critical" |
+| 2 | usage | bad args/flags, unknown id, unknown session-id |
+| 3 | partial / warnings | some items skipped/failed; `--ci` doctor "warnings" |
+| 4 | permission | required disk access / admin not granted |
+| 5 | cancelled | `n` at the prompt / Ctrl-C |
 | 6 | config | invalid config or profile file |
 | 7 | plugin | plugin failed to load / violated contract |
 | 8 | safety | aborted by a safety invariant (protected-path attempt) |
-| 10 | precondition | unsupported OS / no TTY where required / `self-update` v1 |
+| 10 | precondition | unsupported OS / adapter tool (docker/brew) unavailable |
+| 11 | entitlement | a required macOS entitlement is missing |
 | 130 | sigint | POSIX signal interruption (reserved) |
 
 ---
 
 ## Open Questions
 
-- **OQ-08.1** Should `report` expose a `report list` as a proper subcommand vs. a `--list` flag?
-  *Leaning: `--list` flag on `report` for a flat surface.*
-- **OQ-08.2** `--no-stage` under `--ci`: require a signed policy always, or allow with
-  `--yes --force-unsafe`? Coordinate with spec 23. *Leaning: signed policy required.*
-- **OQ-08.3** Do we add a top-level `--all-volumes` global flag, or keep it per-command
-  (`analyze`/`audit`/`clean`)? *Leaning: per-command.*
-- **OQ-08.4** JSON: emit NDJSON streaming for very large result sets (NFR-013) as an alternative
-  to one document? *Leaning: add `--json-stream` in a 1.x, single-doc in v1.*
-- **OQ-08.5** Should `optimize` accept `paths…` or always operate on well-known roots?
-  *Leaning: well-known roots only.*
+- **OQ-08.1** Should `undo` gain a `--purge`/retention flag to permanently drop old staged sessions,
+  or is retention entirely config-driven (spec 24)? *Leaning: config-driven, revisit if requested.*
+- **OQ-08.2** Should `find` gain an `--old <days>` detector alongside `large`/`dupes`?
+  *Leaning: defer; keep `find` to the two shipped detectors.*
+- **OQ-08.3** Should any of the hidden advanced commands (`docker`/`brew`) be promoted into the main
+  `--help` listing once documented? *Leaning: keep hidden; surface via docs + `doctor`.*
+- **OQ-08.4** JSON: emit NDJSON streaming for very large result sets (NFR-013) as an alternative to
+  one document? *Leaning: add `--json-stream` in a 1.x, single-doc for now.*
 
 ## Dependencies
 
-- **Consumes:** 00 (exit codes, risk icons, dispositions, directory layout), 06 (the FRs each
-  command realizes), 07 (stdout/stderr + responsiveness NFRs), 10 (swift-argument-parser).
-- **Feeds:** 09 (IA maps this surface to navigation), 11–13 (command→engine wiring, plugin
-  metadata for `plugins`), 24 (config keys for `config`), 25 (TUI for interactive `cleaner`),
-  26 (CLI UX detail), 27 (error→exit-code mapping), 31 (CLI + JSON-schema snapshot tests).
+- **Consumes:** 00 (exit codes, staging/undo, directory layout), 06 (the FRs each command realizes),
+  07 (stdout/stderr + responsiveness NFRs), 10 (swift-argument-parser).
+- **Feeds:** 09 (IA maps this surface to navigation), 11–13 (command→engine wiring, plugin metadata),
+  24 (config keys), 25 (TUI for the interactive prompt), 26 (CLI UX detail), 27 (error→exit-code
+  mapping), 31 (CLI + JSON-schema snapshot tests).

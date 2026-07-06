@@ -230,8 +230,8 @@ A PR cannot merge with any of these red. Admins do not bypass the safety gate (P
 | Command (`--ci`) | Exit semantics |
 |---|---|
 | `cleaner doctor --ci` | **0** healthy · **3** warnings · **1** critical (Constitution Art. 7 CI mapping). |
-| `cleaner analyze --ci --json` | **0** ok (findings streamed as JSON) · **4** permission (FDA missing) · **6** bad config · **10** unsupported OS. |
-| `cleaner clean --ci --yes --json` | **0** all requested items cleaned · **3** partial (some skipped/failed — report lists them, NFR-035) · **4** permission · **8** safety-invariant abort (protected-path attempt) · **5** cancelled/timeout · **7** plugin contract violation. |
+| `cleaner --dry-run --ci --json` | **0** ok (findings streamed as JSON) · **4** permission (FDA missing) · **6** bad config · **10** unsupported OS. |
+| `cleaner --ci --yes --json` | **0** all requested items cleaned · **3** partial (some skipped/failed — report lists them, NFR-035) · **4** permission · **8** safety-invariant abort (protected-path attempt) · **5** cancelled/timeout · **7** plugin contract violation. |
 | any command, bad flags | **2** usage (ArgumentParser). |
 
 `--ci` implies `--no-tui --no-color --yes`-is-still-explicit (it does **not** imply `--yes`; a `clean`

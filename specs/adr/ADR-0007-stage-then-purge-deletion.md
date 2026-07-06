@@ -28,8 +28,8 @@ invariant "never purge without staging first, unless `--no-stage` **and** confir
 
 ### Stage-then-purge (tool-managed quarantine) — chosen
 - **Pros:** disposal default is *move-to-staging* (`~/.cleaner/staging/<session-uuid>`) preserving
-  original path + metadata, giving instant one-command `staging restore` (FR-088); purge is a
-  separate, explicit, irreversible escalation (`staging purge` / `--no-stage` + confirm, FR-089);
+  original path + metadata, giving instant one-command restore via `cleaner undo` (FR-088); purge
+  is a separate, explicit, irreversible escalation (retention auto-purge / `--no-stage` + confirm, FR-089);
   the engine can enforce "no purge without stage" centrally (FR-110/Article 4.4); every move and
   restore is audited (principle 8); session-scoped staging enables whole-run rollback and
   retention-based auto-purge (spec 24).
@@ -55,12 +55,12 @@ invariant "never purge without staging first, unless `--no-stage` **and** confir
 
 **Default disposition = stage** to `~/.cleaner/staging/<session-uuid>`, preserving original path
 and metadata (FR-087); cross-volume moves fall back to **copy-then-verify-then-remove-source**.
-**Purge** (permanent) is an explicit escalation (`staging purge` or `--no-stage` **with**
+**Purge** (permanent) is an explicit escalation (retention auto-purge or `--no-stage` **with**
 confirmation) and is the only irreversible operation (FR-089/Article 4.4). Offer **`--trash`**
 (FR-090) to route to the macOS Trash for users who prefer Finder recovery. The engine enforces
-"no purge without stage" and audits every disposition/restore (FR-110/FR-099). The `TrashPlugin`
-is a special case: emptying the *user's own* Trash uses `purge` disposition (no re-staging) with
-typed confirmation (FR-037).
+"no purge without stage" and audits every disposition/restore (FR-110/FR-099). *(v0.6: the
+`TrashPlugin` stages the user's Trash contents like every other source, so emptying the Trash is
+recoverable via `cleaner undo` rather than an irreversible purge — FR-037.)*
 
 ## Consequences
 

@@ -21,8 +21,7 @@ here serves Constitution principle 1 (safety over savings), 3 (truth in reportin
 privilege), and 10 (privacy by default). Three invariants govern the whole system:
 
 - **CFG-INV-1 — Safety is not configurable downward.** No key, layer, env var, or flag can remove a
-  protected path (Article 5), raise a plugin's safety score above the scorer ceiling (Article 4.2),
-  or auto-confirm 🔴 (Article 4.1). Keys that *could* weaken safety require `--force-unsafe` **and** a
+  protected path (Article 5) or bypass the confirmation prompt. Keys that *could* weaken safety require `--force-unsafe` **and** a
   typed ack, and are recorded in the audit log (spec 28). See § 7.
 - **CFG-INV-2 — Deterministic resolution.** Given the same layers, the resolved (effective) config is
   byte-identical across runs (principle 5 / NFR-031). Resolution order is fixed (§ 3) and observable
@@ -56,7 +55,7 @@ by default — for lists; see § 3.1). Lowest → highest priority:
 
 ```
  ┌────────────────────────────────────────────────────────────────────────────┐
- │ 6  CLI flags            cleaner clean --no-color --include risk:safe  (win)  │  highest
+ │ 6  CLI flags            cleaner --yes --no-color --dry-run --json     (win)  │  highest
  ├────────────────────────────────────────────────────────────────────────────┤
  │ 5  Environment vars     CLEANER_*  (§ 8)                                     │
  ├────────────────────────────────────────────────────────────────────────────┤
@@ -80,7 +79,7 @@ by default — for lists; see § 3.1). Lowest → highest priority:
   in the user config. Project config MAY tighten but MUST NOT loosen safety keys (§ 7); loosening
   keys in a project file are ignored with a `WARN`.
 - **Layer 4 (profile)** applies a named profile's `plugins`/`options` subset (§ 6.5).
-- The **safety floor** (deny-list, risk gates, score ceiling) is re-applied *after* all merging so no
+- The **safety floor** (the Article 5 deny-list) is re-applied *after* all merging so no
   layer can escape it (CFG-INV-1).
 
 ### 3.1 List-merge semantics
@@ -126,7 +125,6 @@ validates them (spec 13). Every key is dot-addressable by `config get/set` (`sca
 version:        Int                 # config schema version (§ 9). Required once written.
 default:        DefaultsBlock       # default profile, scope, disposition
 scan:           ScanBlock           # thresholds, concurrency, cache
-safety:         SafetyBlock         # risk thresholds & gates (bounded — § 7)
 staging:        StagingBlock        # retention, size caps
 ignore:         IgnoreBlock         # paths never scanned (view-level exclude)
 whitelist:      WhitelistBlock      # paths never acted on (protected, additive to Article 5)
@@ -145,17 +143,15 @@ default:
   profile:      String?  = null       # profile applied when no --profile given (§ 6.5)
   disposition:  Enum{stage,trash,no-stage} = stage   # cannot be no-stage without ack (§ 7)
   scope:        Enum{home,all-volumes} = home        # default root set
-  yesForSafe:   Bool  = false         # allow auto-confirm 🟢 without -y (still NEVER 🟡/🔴)
-  confirmPhrase: String = "delete"    # typed-confirm word for 🔴 (Art. 4.1); localized-safe
 ```
 
 ### 4.3 `scan` — ScanBlock (thresholds, concurrency; feeds spec 17)
 
 ```yaml
 scan:
-  minLargeFileSize:  ByteSize = 1GiB    # `analyze` large-file threshold (FR-070; --min-size overrides)
-  oldFileAge:        Duration = 180d    # `analyze --old` / age classifier cutoff (FR-005)
-  minSavings:        ByteSize = 10MiB   # hide findings/opportunities below this (audit --min-savings)
+  minLargeFileSize:  ByteSize = 1GiB    # `cleaner find large` threshold (FR-070; --min-size overrides)
+  oldFileAge:        Duration = 180d    # old-file age classifier cutoff (FR-005)
+  minSavings:        ByteSize = 10MiB   # hide findings/opportunities below this (`--min-savings`)
   followSymlinks:    Bool     = false   # NEVER follows out of an allowed root regardless (Art. 4.4)
   crossVolume:       Bool     = false   # descend into other mounted volumes during a scan
   concurrency:
@@ -167,23 +163,6 @@ scan:
     enabled:         Bool     = true    # incremental scan cache (FR-007; --no-cache overrides)
     maxAgeDays:      Duration = 7d      # invalidate cache entries older than this
     maxSize:         ByteSize = 200MiB  # cap ~/.cleaner/cache
-```
-
-### 4.4 `safety` — SafetyBlock (risk thresholds; **bounded**, feeds spec 22)
-
-Only the *mappings* are tunable, and only **within** engine-enforced bounds. The score→risk cut
-points may be raised (stricter) but **not** lowered past the Article 4.2 minimums; attempts clamp
-with a `WARN`. See § 7 for the unsafe subset.
-
-```yaml
-safety:
-  scoreSafeMin:    Int = 85   # >= → 🟢. May be raised to be stricter; MUST stay ≥ 85 (Art 4.2)
-  scoreMediumMin:  Int = 50   # 50..84 → 🟡; < → 🔴. MUST stay ≥ 50 (raise-only)
-  includeMedium:   Bool = false   # pre-select 🟡 by default? (still requires confirm; NEVER 🔴)
-  requireTypedConfirmDangerous: Bool = true   # TRUE is a floor; setting false is rejected (§ 7)
-  minRecoverability: Enum{instant,manual,hard,none} = manual
-                                  # refuse to auto-select findings below this recoverability
-  lockedFileMode:  Enum{skip,prompt} = skip   # in-use/locked file handling (Art 4.4)
 ```
 
 ### 4.5 `staging` — StagingBlock (retention; feeds spec 20/21)
@@ -309,7 +288,7 @@ and a single, precisely-located, remediation-bearing error (spec 27 style):
 4. **Cross-field & safety** — safety-floor clamps (§ 7), duplicate rule ids, references to unknown
    plugin ids, whitelist/target contradictions, staging path on a read-only volume.
 
-Phase-3/4 *safety clamps* (e.g. `scoreSafeMin: 70`) are **not** fatal by default — they clamp to the
+Phase-3/4 *safety clamps* are **not** fatal by default — they clamp to the
 floor and emit a `WARN` — **unless** the value is a hard-forbidden setting (§ 7), which is fatal.
 
 ### 5.1 Error message format
@@ -337,9 +316,8 @@ $ cleaner config validate ./team-config.yml
 ✔ syntax            YAML parsed
 ✔ structure         37 keys, 0 unknown
 ✔ rules             4 custom, 2 targets — grammar OK (spec 18)
-⚠ safety            safety.scoreSafeMin 70 → clamped to 85 (raise-only floor, §7)
 ✔ cross-field       no duplicate ids; all plugin ids known
-Result: VALID with 1 warning.        exit: 0
+Result: VALID.        exit: 0
 ```
 
 `config validate` on an **invalid** file prints the § 5.1 error and exits `6`. With `--json` it emits
@@ -383,9 +361,9 @@ slice of `scan`/`safety`/`default` keys, stored as `~/.cleaner/profiles/<name>.y
 
 | Name | Intent | Selection | Notable overrides |
 |---|---|---|---|
-| `conservative` | Only the safest wins | `risk:safe` plugins | `safety.includeMedium: false`, disposition `stage` |
+| `conservative` | Fewer, lower-impact sources | curated `include` set | disposition `stage` |
 | `developer-daily` | Dev caches/artifacts | Developer category + Trash/Temp | `derived-data.keepActiveProjects: true` |
-| `aggressive` | Maximum reclaim (still safe-gated) | all enabled, `includeMedium: true` | still NEVER auto-🔴 (Art 4.1) |
+| `aggressive` | Maximum reclaim | all sources enabled | everything staged + undoable |
 
 Built-ins are immutable; `profile save <builtin>` ⇒ exit `2`. A user may `profile show conservative`
 then `profile save my-conservative` to fork.
@@ -396,19 +374,18 @@ then `profile save my-conservative` to fork.
 # ~/.cleaner/profiles/my-weekly.yml
 version: 1
 name: my-weekly
-description: "Weekly dev cleanup, medium included"
+description: "Weekly dev cleanup"
 plugins: [derived-data, swiftpm, npm-cache, docker, browser-cache]
-include: [risk:safe, risk:medium]      # selector grammar (spec 08 §2)
+include: [category:developer, category:caches]   # selector grammar (spec 08 §2)
 exclude: [plugin:docker.volumes]
 options:
   docker: { pruneBuildCache: true }
 overrides:                              # curated allow-set of config keys a profile may set
-  safety.includeMedium: true
   staging.retention: 14d
 ```
 
 A profile MAY override only keys in the **profile-allowed set** (`plugins.*`, `scan.*`,
-`safety.includeMedium`, `safety.minRecoverability`, `staging.*`, `default.disposition`,
+`staging.*`, `default.disposition`,
 `ui.*`); it MUST NOT set telemetry, whitelist/deny, or any unsafe key (§ 7). Violations ⇒ exit `6`.
 
 ### 6.3 Comment & formatting preservation
@@ -432,14 +409,10 @@ all. This realizes CFG-INV-1 and Constitution Article 4/5.
 
 | Key | Allowed direction | Weakening attempt result |
 |---|---|---|
-| `safety.scoreSafeMin` / `scoreMediumMin` | raise only (stricter) | clamp to floor + `WARN` |
-| `safety.requireTypedConfirmDangerous` | must stay `true` | **fatal** exit `6` (`CFG-410`) |
-| `safety.minRecoverability` | tighten only | clamp + `WARN` |
 | `plugins.<id>.risk` | raise risk only (safe→medium→dangerous) | reject raise-to-safer + `WARN` |
 | `default.disposition: no-stage` | requires `--force-unsafe` + typed ack | prompt; refuse in `--ci`/`--json` w/o signed policy (Art 4.4, spec 23) |
 | `whitelist` subtraction of an Article-5 path | impossible | ignored + `WARN` (deny-list is absolute) |
 | `rules.*.risk` raising above scorer ceiling | impossible | clamp to ceiling + `WARN` (Art 4.2) |
-| `default.yesForSafe` | allowed (🟢 only) | n/a — never affects 🟡/🔴 |
 
 `config set` of a **fatal** unsafe key without `--force-unsafe` prints the ack prompt and the exact
 consequence, and exits `2`. With `--force-unsafe`, an interactive typed ack (or a signed policy in
@@ -474,7 +447,7 @@ cannot weaken safety either. Precedence within layer 5: a named var wins over it
 CLEANER_SCAN_MIN_LARGE_FILE_SIZE=500MB \
 CLEANER_UI_THEME=high-contrast \
 CLEANER_LOG_LEVEL=debug \
-  cleaner analyze ~/Developer
+  cleaner ~/Developer
 ```
 
 ---
@@ -512,8 +485,8 @@ Backup written: ~/.cleaner/config.yml.v1.bak
 ```yaml
 # ~/.cleaner/config.yml — cleaner-cli configuration
 # Docs: spec 24. Precedence: defaults < this file < profile < CLEANER_* env < CLI flags.
-# Safety (Article 4/5) is a FLOOR: nothing here can delete a protected path,
-# auto-confirm a 🔴 Dangerous item, or make a plugin "safer" than the scorer allows.
+# Safety (Article 5) is a FLOOR: nothing here can delete a protected path
+# or bypass the confirmation prompt.
 
 version: 1
 
@@ -522,12 +495,10 @@ default:
   profile: developer-daily     # applied when no --profile is given (null = none)
   disposition: stage           # stage (recoverable) | trash | no-stage (needs ack, §7)
   scope: home                  # home | all-volumes
-  yesForSafe: false            # auto-confirm 🟢 only; NEVER 🟡/🔴 regardless
-  confirmPhrase: delete        # what you type to confirm a 🔴 Dangerous clean
 
 # ── Scan thresholds & performance (spec 17) ──────────────────────────────────
 scan:
-  minLargeFileSize: 1GiB       # `analyze` flags files ≥ this (override: --min-size)
+  minLargeFileSize: 1GiB       # `cleaner find large` flags files ≥ this (override: --min-size)
   oldFileAge: 180d             # "old file" cutoff (override: --old <days>)
   minSavings: 10MiB            # hide findings smaller than this
   followSymlinks: false        # never followed OUT of an allowed root regardless
@@ -540,15 +511,6 @@ scan:
     enabled: true              # incremental scan cache (override: --no-cache)
     maxAgeDays: 7d
     maxSize: 200MiB
-
-# ── Risk thresholds — RAISE-ONLY (stricter). Lowering is clamped (§7). ────────
-safety:
-  scoreSafeMin: 85             # ≥ → 🟢 (must stay ≥ 85)
-  scoreMediumMin: 50           # 50–84 → 🟡, below → 🔴 (must stay ≥ 50)
-  includeMedium: false         # pre-select 🟡? (still needs confirmation)
-  requireTypedConfirmDangerous: true   # MUST remain true (setting false is rejected)
-  minRecoverability: manual    # don't auto-select anything less recoverable than this
-  lockedFileMode: skip         # skip | prompt for in-use files
 
 # ── Staging / quarantine (spec 21) ───────────────────────────────────────────
 staging:

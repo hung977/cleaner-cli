@@ -7,7 +7,7 @@
 > 15-data-model (§3 layout, §5 staging manifest, §6 audit, §11 retention, §12 locking),
 > 16-filesystem-strategy (§6 symlink/hardlink, §9 TOCTOU, §11 disposition), 20-cleanup-engine
 > (writes the staging tree this restores) · **Depended on by:** 22 (safety guarantees),
-> 25 (TUI `staging` commands), 28 (audit), 31 (crash-consistency tests).
+> 25 (`cleaner undo` UX), 28 (audit), 31 (crash-consistency tests).
 
 ## 1. Purpose & scope
 
@@ -15,7 +15,7 @@
 (CC-7). This spec defines the **staging/quarantine + restore system**: how staged items are laid
 out and described so they can be restored *faithfully* (permissions, ownership, xattrs, ACLs, BSD
 flags, timestamps, symlink targets, hardlink groups), the restore algorithm (including conflict,
-cross-volume, and integrity handling), the `cleaner staging list/restore/purge` behavior,
+cross-volume, and integrity handling), the `cleaner undo` / `cleaner undo --list` and retention-purge behavior,
 retention/auto-purge policy, permanent-purge safeguards, macOS Trash as an alternative recoverable
 disposition and its trade-offs, and an **honest declaration of what is NOT recoverable** (Principle
 3), plus crash-consistency of staging.
@@ -77,7 +77,7 @@ move, the manifest fully describes how to put the item back.
 ## 4. Rollback flow diagram
 
 ```
- cleaner staging restore <session|entry> [--to <path>] [--collision fail|rename|overwrite]
+ cleaner undo <session|entry> [--to <path>] [--collision fail|rename|overwrite]
         │
         ▼
  ① acquire manifest.ndjson.lock (single-writer, spec 15 §12)
@@ -157,16 +157,16 @@ error) → the entry is **refused**, reported as a corruption failure (Principle
 something we can't prove is intact), contributing to exit 3. `--force` may override with a loud
 warning (spec 25), but the default is refuse.
 
-## 6. `cleaner staging` commands
+## 6. `cleaner undo` — list & restore
 
 ```
- cleaner staging list [--session <id>] [--json]
- cleaner staging restore <session-id | entry-id | --last> [--to <path>]
-                         [--collision fail|rename|overwrite] [--dry-run] [--force]
- cleaner staging purge   <session-id | --all | --expired> [--yes]
- cleaner staging gc                                   # apply retention policy now (§7)
- cleaner staging info    <session-id>                 # sizes, age, retention-expiry, integrity
+ cleaner undo --list [--session <id>] [--json]        # enumerate sessions/entries, sizes, expiry
+ cleaner undo [<session-id> | <entry-id> | --last] [--to <path>]
+              [--collision fail|rename|overwrite] [--dry-run] [--force]
 ```
+
+Permanent purge is not a user command in v0.6 — staged payloads are freed automatically by the
+retention policy (§7).
 
 ### 6.1 `list`
 
@@ -183,11 +183,11 @@ numbers principle (DM-9 analog). `--to <path>` remaps the restore root (useful w
 location is now occupied or the user wants it elsewhere). Restoring an already-restored entry is a
 no-op (idempotent — the reduced manifest state shows `restored=true`).
 
-### 6.3 `purge`
+### 6.3 Purge (automatic)
 
 Permanent deletion of staged payloads (the only irreversible op, Principle/Art. 3). Safeguards in
-§9. `--expired` purges only sessions past retention (§7); `--all` requires `--yes` (or interactive
-typed confirmation). Purge appends `item.purged` audit events (spec 15 §6) and frees the staging
+§9. Purge is driven only by the retention policy (§7) — sessions past retention or over the size cap
+are freed automatically. Purge appends `item.purged` audit events (spec 15 §6) and frees the staging
 budget.
 
 ## 7. Retention & auto-purge policy
@@ -196,8 +196,7 @@ Staging cannot grow forever (it holds "freed" bytes until purged). Policy (spec 
 overridable spec 24):
 
 - **Age cap.** Sessions older than `staging.retentionDays` (default 14) are eligible for
-  auto-purge. Auto-purge runs opportunistically at CLI start (a quick check) and on-demand via
-  `cleaner staging gc`.
+  auto-purge. Auto-purge runs opportunistically at CLI start (a quick check).
 - **Size cap.** Total staging ≤ `min(user-set, 20% of volume free space)`. When exceeded, evict
   **oldest-first** until under cap. This bounds the "space is freed but still held" surprise: the
   user sees reclaim immediately, and staging self-trims.
@@ -228,16 +227,16 @@ when a session will expire (`staging.retentionExpiresAt`, spec 15 §8).
 
 Purge is the single irreversible operation (Art. 4.4, CC-7). Safeguards:
 
-1. **Never a default.** No scan/clean path purges live items; `stage` is default. Purge of live
-   items needs `--no-stage` **and** typed confirmation (DM-5). Purge of *staged* items needs an
-   explicit `staging purge` with `--yes`/typed confirmation.
+1. **Never a default.** No scan/clean path purges live items; every removal is staged first
+   (`stage` is the only path). Purge of *staged* items happens only via automatic retention (§7) —
+   there is no user-invoked purge command.
 2. **Protected re-check.** Even purging from staging re-guards the *original* path recorded in the
    manifest against the deny-list — a manifest tampered to point purge at a protected path is
    rejected (exit 8).
 3. **Write-intent journaling.** Audit `item.purged` intent is written (and fsync'd) *before* the
    `unlinkat`, so a crash mid-purge is reconstructable (spec 15 §12).
-4. **Batch confirmation.** `staging purge --all` states the total bytes and item count and requires
-   a typed phrase in interactive mode (spec 25), never a bare `y`.
+4. **Automatic-purge accounting.** Retention auto-purge (§7) records the total bytes and item count
+   in the audit trail and runs only behind the §7 safety gate (24 h floor, no pending rollback).
 
 ## 10. Guarantees & limits — what is NOT recoverable (declared honestly)
 
@@ -253,8 +252,8 @@ Principle 3 demands we state the limits plainly rather than imply perfect revers
 1. **Purged items.** `purge` is permanent by definition — no rollback (Art. 3). The audit trail
    records that it happened, but the bytes are gone.
 2. **Trashed items.** `Disposition.trash` hands items to the macOS Trash; recovery is via **Finder**
-   (or emptied-Trash tools), **not** `cleaner staging restore`. The trade-off is deliberate (§11).
-3. **Items past retention.** Auto-purged sessions (§7) are gone; `staging list` shows expiry so the
+   (or emptied-Trash tools), **not** `cleaner undo`. The trade-off is deliberate (§11).
+3. **Items past retention.** Auto-purged sessions (§7) are gone; `cleaner undo --list` shows expiry so the
    user isn't surprised.
 4. **birthtime (creation date).** May not be settable on all filesystems; restore best-efforts it
    and warns if it couldn't be reproduced. Content and mtime are always restored.
@@ -269,7 +268,7 @@ Principle 3 demands we state the limits plainly rather than imply perfect revers
    (it's a full copy); its on-disk footprint may exceed the original's *shared* footprint. This is
    a footprint difference, not a data-loss.
 
-These limits are surfaced in `cleaner staging info` and in restore warnings, so the user's mental
+These limits are surfaced in `cleaner undo --list` and in restore warnings, so the user's mental
 model matches reality (Principle 1/3).
 
 ## 11. macOS Trash as an alternative recoverable disposition
@@ -279,7 +278,7 @@ trade-offs vs. tool-staging:
 
 | Aspect | Tool staging (`stage`, default) | macOS Trash (`trash`) |
 |---|---|---|
-| Recovery UX | `cleaner staging restore` (scriptable, faithful metadata) | Finder "Put Back" (GUI, familiar) |
+| Recovery UX | `cleaner undo` (scriptable, faithful metadata) | Finder "Put Back" (GUI, familiar) |
 | Metadata fidelity | Full (ACL/xattr/flags/birthtime best-effort, §3) | Finder-managed; "Put Back" restores original location |
 | Auto-cleanup | Tool retention policy (§7) | macOS "empty Trash automatically" (30 d) or manual |
 | Space accounting | Counts against tool staging budget under `~/.cleaner` | Counts against `~/.Trash` (per-volume `.Trashes`) |
@@ -311,7 +310,7 @@ recovered state (NFR-032/042):
 - **Restore** likewise appends a `restored` event only **after** the payload is back and verified;
   a crash mid-restore leaves the entry `staged` (payload still in `files/` if the move didn't
   complete, or in place if it did) — re-running restore is idempotent (§6.2).
-- **Recovery command** (implicit at `staging list`/`gc`, explicit via `staging info`): reconciles
+- **Recovery command** (implicit at `cleaner undo --list` and automatic retention gc): reconciles
   each session's manifest against the `files/` tree, flags any entry it cannot classify (payload
   present but original also present → a copy-path crash before source unlink) for the user rather
   than guessing. No silent data operations during recovery.
@@ -369,7 +368,7 @@ staging tree stays a crash-safe journal end to end.
 - **OQ-21.1** Per-volume staging roots (`<mount>/.cleaner-staging`) vs. always-`~/.cleaner/staging`
   with a cross-volume copy fallback — the former keeps rename atomicity on external volumes but
   scatters staging. *Leaning: per-volume staging root when the item's volume ≠ home volume;
-  reconcile at `staging list`. Coordinate with spec 20 OQ-20.3.*
+  reconcile at `cleaner undo --list`. Coordinate with spec 20 OQ-20.3.*
 - **OQ-21.2** Integrity hash choice for staged trees (xxHash vs. SHA-256) — inherits spec 15
   OQ-15.2 / spec 20 OQ-20.1. *Leaning: xxHash tree-manifest for integrity; SHA-256 only if already
   computed for dedup.*
@@ -400,6 +399,6 @@ strategy (§6 symlink/hardlink, §9 canonicalize/TOCTOU/fd-relative, §11 dispos
 capture-before-move), 23-permission-model (elevation for ownership restore).
 
 **Feeds:** 22-safety-model (reversibility guarantee underpins risk/recoverability), 25-tui
-(`staging list/restore/purge/info` UX, typed confirmation, warnings), 28-logging
+(`cleaner undo` / `cleaner undo --list` UX, confirmation prompt, warnings), 28-logging
 (`item.restored`/`item.purged` audit), 31-testing-strategy (crash-consistency & restore-fidelity
 tests), 24-config (retention overrides).

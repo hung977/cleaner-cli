@@ -21,6 +21,19 @@ engine's `SafetyScorer` (spec 22), `RuleEngine` (spec 18), and `ProtectedPathGua
 re-validate. A plugin may present a *stricter* (higher) risk with evidence, never a looser one
 (DM-3). No plugin ever calls `unlink`/`rename`/`FileManager` — deletion happens only in the engine.
 
+> **How to read the risk grades in these plugin specs (v0.6 as-built).** The shipped `cleaner` is a
+> line-based CLI with **no user-facing risk tiers** — no 🟢🟡🔴 icons, no Safe/Medium/Dangerous
+> display, no risk-based pre-selection, and no typed-confirm-for-dangerous gate. User selection is
+> `Clean all / select each (y/N) / cancel` (or `--yes`), and safety comes from the staging
+> quarantine (every action is reversible via `cleaner undo`) plus the engine-enforced
+> protected-path guard — not from risk grading (see specs 14 §1, 22 §1). The `defaultRisk` /
+> `SafetyScore` / "pre-selected" / "typed confirm" narratives below are therefore **vestigial
+> internal-scorer design**: `RiskLevel`/`SafetyScore` survive as internal metadata and inform each
+> plugin's *conservative defaults* (what a plugin offers vs. holds back — e.g. Archives, named
+> Docker volumes, and user-content files are excluded from the default offer), but they no longer
+> drive any user-facing selection, gating, or display. Read the per-category tables as
+> classification rationale (what is rebuildable vs. what may be user data), not as a shipped UI.
+
 ## 2. Catalog of v1 plugins
 
 Columns:

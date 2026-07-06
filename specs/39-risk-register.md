@@ -76,7 +76,7 @@ RISK-013.
 The reason spec 22 exists and the reason Constitution Principle 1 outranks everything. A single
 wrong byte is worse than a wrongly-kept gigabyte. The register scores impact **H** unconditionally.
 Our defense is *layered and independent*: the scorer's gates (a Finder-tagged or document-typed file
-is capped to 🔴 regardless of other signals — spec 22 SR-017/024), engine invariants that fire even
+is treated as protected regardless of other signals — spec 22 SR-017/024), engine invariants that fire even
 if a plugin and the scorer both erred (SR-033–039), and — crucially — **staging-by-default**, which
 converts most realized instances of this risk from "data loss" into "one `rollback` command"
 (spec 21). The dominant *residual* (RR-2, spec 36) is a first-party plugin heuristic that

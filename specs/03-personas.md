@@ -5,13 +5,19 @@
 >
 > **Status:** Draft · **Version:** 1.0 · **Owner:** Product / UX
 
+> **v0.6 note.** The tool shipped as a line-based CLI with no risk tiers (no 🟢🟡🔴 /
+> Safe·Medium·Dangerous). Personas below are reconciled to the shipped flow — selection is
+> `Clean all / select each (y/N) / cancel` (or `--yes`) and safety comes from staging +
+> `cleaner undo` + the protected-path guard, not risk grading. Retained risk vocabulary is
+> vestigial internal metadata only.
+
 ## 1. Purpose
 
 Give the design a cast of concrete users so that requirements, user stories (spec 04), use
 cases (spec 05), and the UX specs (24–26) can be written *for someone specific* rather than an
 abstract "user". Personas here are the canonical referents for the "As a `<persona>`…" clause
-in every user story. They also anchor the **risk-tolerance spectrum** (§ 8) that the Safety
-Model (spec 22) tunes defaults against.
+in every user story. They also anchor the **caution spectrum** (§ 9) — how boldly each persona
+drives the one shipped flow — that the Safety Model (spec 22) accounts for.
 
 These personas are archetypes, not real individuals. Each MUST be traceable to a pain in the
 problem statement (spec 02) and to at least one KPI in the vision (spec 01).
@@ -50,10 +56,10 @@ because team standardization drives the automation/reporting epics (spec 04).
 - **Frustrations.** "Disk full" mid-archive; Xcode's own cleanup is buried; deleting the
   wrong simulator loses a carefully set-up device; `xcrun simctl` incantations are easy to
   get wrong.
-- **How she'd use cleaner-cli.** Runs `cleaner clean` interactively, scans the tree in the TUI,
-  bulk-selects 🟢 Xcode/DerivedData/stale-runtime findings, **skips** anything touching
-  provisioning profiles or a named simulator she recognizes, confirms, done in a minute. Keeps
-  staging around for a day in case a build misbehaves.
+- **How she'd use cleaner-cli.** Runs `cleaner` interactively, reviews the scan, cleans
+  everything found — or picks `select each` (`y/N`) to skip anything touching provisioning
+  profiles or a named simulator she recognizes — confirms, done in a minute. Keeps the staged
+  quarantine around for a day (reversible via `cleaner undo`) in case a build misbehaves.
 - **What makes her distrust it.** Any hint it would delete signing assets, provisioning
   profiles, a *booted* or named simulator, or Keychain items. A reclaim number that doesn't
   match what Finder later shows (breaks truth-in-reporting, principle 3).
@@ -78,13 +84,14 @@ because team standardization drives the automation/reporting epics (spec 04).
 - **Frustrations.** `docker system prune` is scary (what about my volumes?); he can't remember
   which `node_modules` are safe; global package caches are opaque; he over-tolerates a full
   disk because cleaning is a chore.
-- **How he'd use cleaner-cli.** `cleaner analyze` first to see the breakdown by category, then
-  `cleaner clean` interactively; relies on risk badges to avoid touching *running* Docker
-  resources and the active project. Later graduates to `cleaner clean --yes` on 🟢 only for a
-  quick weekly sweep, and adds a couple of active projects to his ignore config.
+- **How he'd use cleaner-cli.** `cleaner --dry-run` first to see the breakdown by category
+  without changing anything, then `cleaner` interactively; uses `select each` (`y/N`) to avoid
+  touching *running* Docker resources and the active project, leaning on the protected-path
+  guard as a backstop. Later graduates to `cleaner --yes` for a quick weekly sweep, and adds a
+  couple of active projects to his ignore config.
 - **What makes him distrust it.** Deleting a Docker **volume** with data, or the `node_modules`
   of the repo he's mid-feature on, or anything that forces a slow `npm install` he didn't
-  expect (medium-risk items acting like safe ones).
+  expect. (Staging + `cleaner undo` are his safety net when a sweep goes too far.)
 - **Serves KPIs.** K2, K8 (automation ratio via weekly `--yes` sweep), K9 (repeat usage).
 
 ---
@@ -102,14 +109,14 @@ because team standardization drives the automation/reporting epics (spec 04).
   get machine-readable results into dashboards; never have cleanup itself break a build.
 - **Frustrations.** GUI cleaners are useless to her (spec 02 cause 6); homegrown `rm -rf`
   scripts are fragile and occasionally nuke a build cache they shouldn't; no unified report.
-- **How she'd use cleaner-cli.** In a CI pre/post step: `cleaner doctor --ci` as a health gate,
-  `cleaner clean --yes --include ...` scoped to safe categories, `cleaner report --json` piped
-  to her observability stack. Uses a signed automation policy (Constitution Article 5 / spec
-  23) so unattended runs are governed, and exit codes (Article 7) drive pipeline logic.
+- **How she'd use cleaner-cli.** In a CI pre/post step: `cleaner doctor` as a health gate,
+  `cleaner --yes --include ...` scoped to the categories she trusts on runners, `cleaner --yes
+  --json` piped to her observability stack. Uses a signed automation policy (Constitution
+  Article 5 / spec 23) so unattended runs are governed, and exit codes (Article 7) drive
+  pipeline logic.
 - **What makes her distrust it.** Non-deterministic scans (breaks idempotence, principle 5);
   any interactive prompt in `--yes` mode; unclear exit codes; deleting a warm cache that
-  slows every subsequent build (medium-risk treated as safe). A tool that phones home
-  (principle 10) is an instant no.
+  slows every subsequent build. A tool that phones home (principle 10) is an instant no.
 - **Serves KPIs.** K8 (automation ratio), K10 (doctor-clean rate), K5 (preview accuracy for
   dashboards).
 
@@ -131,13 +138,14 @@ because team standardization drives the automation/reporting epics (spec 04).
   enjoy the process (dashboards, themes); set up a saved profile for a monthly ritual.
 - **Frustrations.** Small SSD fills weekly; DaisyDisk shows him big folders but won't clean
   safely; he's willing to go a bit aggressive but has been burned by `rm`.
-- **How he'd use cleaner-cli.** Interactive TUI for the experience; uses the duplicate-finder
-  and large/old-file finder; sometimes opts into `--include medium`; saves a
-  "prosumer-monthly" **profile** (Constitution glossary) and tweaks themes and the config
-  whitelist. Exports an HTML report to feel good about the reclaimed space.
+- **How he'd use cleaner-cli.** Runs `cleaner` interactively for the experience; when he wants
+  to go further than the default clean he runs the finders — `cleaner find large` and `cleaner
+  find dupes`; saves a "prosumer-monthly" **profile** (Constitution glossary) and tweaks the
+  config whitelist. Exports a `--md` report to feel good about the reclaimed space.
 - **What makes him distrust it.** A duplicate-finder that flags files that aren't truly
   identical (hash false positive), or deleting the *original* instead of the copy; a reclaim
-  number that doesn't stick. He tolerates medium risk but not sloppiness.
+  number that doesn't stick. He'll go beyond the default clean but has no patience for
+  sloppiness — and leans on `cleaner undo` when a finder sweep overreaches.
 - **Serves KPIs.** K2, K9 (ritual/repeat), K4 (rollback when he goes aggressive).
 
 ---
@@ -186,7 +194,7 @@ because team standardization drives the automation/reporting epics (spec 04).
 - **Frustrations.** Every dev cleans differently (or not at all); occasional data-loss scares
   from ad-hoc `rm`; no visibility.
 - **How he'd use cleaner-cli.** Ships a shared `config.yml` / profile and a one-line runbook
-  command to the team; asks for `cleaner report` output in retros; never touches the internals
+  command to the team; asks for `cleaner --md` / `--json` output in retros; never touches the internals
   himself. Values the **audit trail** and reversibility as a governance story.
 - **What makes him distrust it.** A single data-loss incident on any team machine; a tool
   that's too fiddly for his less-CLI-comfortable reports; anything requiring per-machine
@@ -195,33 +203,38 @@ because team standardization drives the automation/reporting epics (spec 04).
 
 ---
 
-## 9. The risk-tolerance spectrum
+## 9. The caution spectrum
 
-The Safety Model (spec 22) sets *defaults* conservatively (Constitution principle 1) and lets
-each persona opt toward more aggression explicitly. Mapping personas onto the spectrum:
+In v0.6 there is no risk-tier opt-in — the same safe flow (scan → `Clean all / select each
+(y/N) / cancel`, everything staged) serves every persona. What differs is *how cautiously* each
+persona drives that flow. Mapping personas onto the spectrum from most to least cautious:
 
 ```
- Very low            Low            Medium            Medium–high
- risk tolerance      tolerance      tolerance         tolerance
+ Most cautious       Cautious        Confident           Goes furthest
  ┌──────────┬───────────────┬────────────────────┬──────────────────┐
  │  Rosa P5 │  Mai P1        │  Diego P2          │  Sam P4          │
  │  Tomás P6│  Priya P3*     │  Priya P3 (in CI)  │                  │
  └──────────┴───────────────┴────────────────────┴──────────────────┘
-   dry-run,     🟢 only,        🟢 + selected 🟡     🟢 + 🟡, uses
-   verify,      skips named     via --include,       duplicate/large
-   audit        assets          scoped policy        finders, --include
+   --dry-run,   reviews scan,    cleans all / --yes    also runs the
+   verify,      uses `select     for a routine         finders:
+   audit,       each` to skip    sweep, trusts         `find large` /
+   `undo`       named assets     staging + `undo`      `find dupes`
 ```
 
-\* Priya is *very low* risk on production-critical caches but *medium* on runner scratch space;
-her policy scopes categories rather than applying one global tolerance.
+\* Priya is *most cautious* on production-critical caches but *confident* on runner scratch
+space; her policy scopes which categories she includes rather than applying one global posture.
 
 **Design implications:**
 
-- The **default** posture MUST satisfy the most conservative persona (Rosa/Mai): pre-select
-  only 🟢, never pre-select 🟡, require typed confirmation for 🔴 (Constitution Article 4.1).
-- Aggression MUST be an **explicit opt-in** (`--include medium`, duplicate/large finders,
-  `--no-stage`), never a default — so P4/P2 can go further without endangering P1/P3/P5.
-- Every persona, regardless of tolerance, depends on **reversibility** (staging/rollback) and
+- The **default** posture satisfies the most cautious persona (Rosa/Mai): nothing is deleted
+  outright — every action is staged into quarantine and reversible via `cleaner undo`,
+  protected paths (Documents, Desktop, SSH keys, Keychains, system files) are never touched,
+  and `--dry-run` previews the full plan without changing anything. (This supersedes the older
+  risk-tier gating once cited from Constitution Article 4.1 — see spec 22.)
+- Going **beyond the default clean** is an explicit opt-in via the finders (`cleaner find
+  large` / `cleaner find dupes`), never a default — so P4/P2 can go further without endangering
+  P1/P3/P5. There is no risk-tier opt-in in v0.6.
+- Every persona, regardless of caution, depends on **reversibility** (staging/undo) and
   **truth-in-reporting**; these are not tunable and serve K1/K4/K5 universally.
 - **Trust disqualifiers are shared:** network calls, silent escalation, symlink escapes, and
   credential-adjacent deletions would break trust for *every* persona, not just Rosa — so they
@@ -231,13 +244,13 @@ her policy scopes categories rather than applying one global tolerance.
 
 | Feature / surface | P1 Mai | P2 Diego | P3 Priya | P4 Sam | P5 Rosa | P6 Tomás |
 |---|---|---|---|---|---|---|
-| Interactive TUI (`clean`) | ●●● | ●● | ○ | ●●● | ● | ○ |
-| Headless `--yes` / `--ci` | ○ | ●● | ●●● | ● | ● | ●● (via runbook) |
-| `analyze` (read-only) | ●● | ●●● | ●● | ●●● | ●●● | ● |
-| `dry-run` preview | ●● | ●● | ●● | ●● | ●●● | ○ |
+| Interactive clean (`cleaner`) | ●●● | ●● | ○ | ●●● | ● | ○ |
+| Headless (`--yes`) | ○ | ●● | ●●● | ● | ● | ●● (via runbook) |
+| Scan / preview (read-only) | ●● | ●●● | ●● | ●●● | ●●● | ● |
+| `--dry-run` preview | ●● | ●● | ●● | ●● | ●●● | ○ |
 | `doctor` | ● | ● | ●●● | ● | ●● | ● |
-| `report` (JSON/HTML) | ● | ● | ●●● | ●● | ●● | ●●● |
-| Rollback / staging | ●● | ●● | ● | ●●● | ●●● | ●● |
+| Report (`--json` / `--md`) | ● | ● | ●●● | ●● | ●● | ●●● |
+| Staging / `undo` | ●● | ●● | ● | ●●● | ●●● | ●● |
 | Config / profiles / ignore | ● | ●● | ●●● | ●●● | ●● | ●●● (shared) |
 | Duplicate finder | ○ | ● | ○ | ●●● | ● | ○ |
 | Large/old-file finder | ● | ● | ● | ●●● | ● | ○ |
@@ -263,11 +276,12 @@ Legend: ●●● core to persona · ●● important · ● occasional · ○ r
 
 ## Dependencies
 
-**Consumes:** 00-constitution (Article 4 risk levels drive the spectrum; principles 1/2/6/10
-define the shared trust disqualifiers), 01-product-vision (personas must serve its KPIs),
+**Consumes:** 00-constitution (principles 1/2/6/10 define the shared trust disqualifiers;
+Article 4 risk levels are vestigial in v0.6 and no longer drive the caution spectrum — see spec
+22), 01-product-vision (personas must serve its KPIs),
 02-problem-statement (each persona embodies a quantified pain and root cause).
 
 **Feeds:** 04-user-stories (the `<persona>` in every story), 05-use-cases (actors),
 06-functional-requirements (features prioritized by persona affinity), 22-safety-model
-(defaults tuned to the risk spectrum), 24-configuration-system / 25-tui-design-system /
+(defaults account for the caution spectrum), 24-configuration-system / 25-tui-design-system /
 26-cli-ux-guideline (UX designed per persona interface affinity § 10).

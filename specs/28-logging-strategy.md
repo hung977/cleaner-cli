@@ -202,7 +202,7 @@ tool's own tree. Read-only scans emit **no** audit events (they mutate nothing).
   record (`session`), every audit event, the report filename (`reports/<uuid>.json`), and the staging
   dir (`staging/<uuid>/`). This ties logs ↔ audit ↔ report ↔ staged bytes for a run.
 - Sub-operations carry a `phase` and, where useful, a `spanId` (§ 8) for signpost correlation.
-- `cleaner report <uuid>` and `cleaner staging list` surface the UUID so a user can `grep
+- `cleaner undo --list` surfaces the UUID so a user can `grep
   "$uuid" ~/.cleaner/logs/**` and get the whole story.
 
 ---

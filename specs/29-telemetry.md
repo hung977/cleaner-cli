@@ -102,7 +102,7 @@ Sending is batched, rate-limited, and can be revoked anytime:  cleaner telemetry
 Enable SENDING aggregate telemetry?  Type  send  to confirm, or Esc to cancel: ▏
 ```
 
-Egress uses a **typed** confirmation (like a 🔴 gate) because it's the only path that leaves the
+Egress uses a **typed** confirmation because it's the only path that leaves the
 machine. In `--ci`/`--json`/`--no-input`, egress can be enabled **only** via config set with a signed
 policy (spec 23) — never silently. The endpoint is configurable and defaults to a first-party,
 documented ingest URL; there is **no** third-party analytics SDK (principle 10, NFR-054).

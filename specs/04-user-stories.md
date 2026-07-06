@@ -5,6 +5,12 @@
 >
 > **Status:** Draft · **Version:** 1.0 · **Owner:** Product
 
+> **v0.6 note.** `cleaner` is a line-based CLI. There are no risk tiers (no 🟢🟡🔴 /
+> Safe·Medium·Dangerous) in v0.6 — selection is `Clean all / select each (y/N) / cancel`, and
+> safety comes from staging + `cleaner undo` + the protected-path guard, not risk grading. The
+> user stories below are reconciled to what shipped; retained risk vocabulary is vestigial
+> internal metadata only.
+
 ## 1. Purpose
 
 Express the required behaviour of cleaner-cli as user stories in the canonical form
@@ -14,8 +20,10 @@ the traceability matrix (spec 06): every Functional Requirement MUST trace to �
 and every story SHOULD trace forward to ≥ 1 use case (spec 05) and ≥ 1 test (spec 31).
 
 RFC-2119 keywords in acceptance criteria are normative. Personas are P1–P6 from spec 03.
-Commands, risk levels 🟢/🟡/🔴, exit codes, and staging/rollback terms are used exactly as
-fixed in the Constitution (Articles 4, 7, 8; glossary Article 3).
+Commands, exit codes, and staging/rollback terms are used exactly as fixed in the Constitution
+(Articles 4, 7, 8; glossary Article 3). Risk levels (🟢/🟡/🔴) are **not** surfaced in v0.6 (see
+the v0.6 note above) and survive only as vestigial internal metadata that no longer governs
+selection, gating, or display.
 
 ### 1.1 Story ID map (by epic)
 
@@ -70,8 +78,8 @@ paths, so that I can judge them item by item.*
 
 - **Given** an interactive TTY,
 - **When** I expand a category in the `analyze`/`clean` tree,
-- **Then** the tool MUST show each Item's path(s), size, risk level (🟢/🟡/🔴), and a one-line
-  rationale/evidence summary.
+- **Then** the tool MUST show each Item's path(s), size, and a one-line rationale/evidence
+  summary. (No risk level is shown in v0.6.)
 
 ### US-004 — Analyze a specific scope
 *As Priya (P3), I want to analyze only selected categories or roots, so that I can measure a
@@ -98,8 +106,9 @@ scraping human text.*
 
 - **Given** `--json` (or a non-TTY stdout),
 - **When** I run `cleaner analyze --json`,
-- **Then** the tool MUST emit a stable, documented JSON schema of categories, items, sizes, and
-  risk levels to stdout, emit no decorative TUI to stdout, and exit `0`.
+- **Then** the tool MUST emit a stable, documented JSON schema of categories, items, and sizes
+  to stdout, emit no decorative output to stdout, and exit `0`. (Risk levels are not part of the
+  v0.6 output.)
 
 ---
 
@@ -111,11 +120,14 @@ reclaim space with full control over each item.*
 
 - **Given** a completed scan on a TTY,
 - **When** I run `cleaner clean`,
-- **Then** 🟢 items MUST be pre-selected, 🟡 items MUST be shown but not pre-selected, and 🔴
-  items MUST be shown, never pre-selected (Article 4.1),
-- **And** the tool MUST present a preview and MUST NOT mutate the filesystem until I confirm,
-- **And** on confirmation it MUST move selected items to Staging by default and report actual
-  reclaimed bytes, exiting `0` (or `3` if some items were skipped/failed).
+- **Then** the tool MUST print a preview grouped by source and prompt `Clean all X? [Y = all ·
+  s = select each · n = cancel]`; `Y` MUST select everything found, `s` MUST offer every source
+  individually via a `y/N` prompt, and `n` MUST cancel without mutation (there is no risk-based
+  pre-selection in v0.6),
+- **And** the tool MUST NOT mutate the filesystem until I confirm,
+- **And** on confirmation it MUST move selected items to Staging by default (recoverable via
+  `cleaner undo`) and report actual reclaimed bytes, exiting `0` (or `3` if some items were
+  skipped/failed).
 
 ### US-008 — Quick non-interactive clean
 *As Diego (P2), I want a one-command clean of safe junk without prompts, so that I can do a
@@ -123,8 +135,9 @@ fast weekly sweep.*
 
 - **Given** `--yes`,
 - **When** I run `cleaner clean --yes`,
-- **Then** the tool MUST auto-clean only 🟢 items, MUST skip 🟡 unless `--include medium` is
-  given, MUST never auto-clean 🔴 (Article 4.1),
+- **Then** the tool MUST clean everything found without prompting; there is no risk filter in
+  v0.6 (no `--include medium` gate), because every action is staged and reversible via `cleaner
+  undo` and the protected-path guard still applies,
 - **And** it MUST require no interactive input and MUST exit `0`/`3`.
 
 ### US-009 — Preview without touching anything (dry-run)
@@ -145,20 +158,22 @@ biggest hog without reviewing everything.*
 - **When** I run `cleaner clean --only docker`,
 - **Then** only that plugin's items MUST be in scope, with the same preview/confirm/stage rules.
 
-### US-011 — Bulk select by risk
-*As Sam (P4), I want to select all 🟢 (and optionally all 🟡) items at once, so that I don't
-tick dozens of boxes by hand.*
+### US-011 — Bulk select found items
+*As Sam (P4), I want to select everything found at once instead of ticking each one, so that I
+don't answer dozens of prompts by hand.*
 
-- **Given** the interactive selection view,
-- **When** I choose "select all safe" (or "select all medium"),
-- **Then** the tool MUST toggle exactly the items of that risk level, leaving 🔴 untouched.
+- **Given** the interactive selection prompt,
+- **When** I answer `Y` (`Clean all`),
+- **Then** the tool MUST select every reclaimable item found in one action, while `s` (`select
+  each`) MUST instead walk items individually via `y/N`. (v0.6 surfaces no risk tiers, so
+  risk-based bulk selection is not shipped.)
 
 ### US-012 — Deselect an item I care about
-*As Mai (P1), I want to exclude a specific pre-selected item before confirming, so that a named
-simulator or profile I recognize is never touched.*
+*As Mai (P1), I want to exclude a specific item before confirming, so that a named simulator or
+profile I recognize is never touched.*
 
-- **Given** a pre-selected 🟢 item in the review view,
-- **When** I deselect it and confirm,
+- **Given** an item offered in `select each` mode,
+- **When** I answer `N` at its `y/N` prompt and confirm the rest,
 - **Then** that item MUST NOT be acted on, and the report MUST record it as `skip`.
 
 ### US-013 — Idempotent re-run
@@ -167,7 +182,7 @@ that cleanup is safe to run repeatedly (e.g. in a loop or CI).*
 
 - **Given** a `clean` just completed,
 - **When** I run `cleaner clean --yes` again on the unchanged tree,
-- **Then** the tool MUST find no new reclaimable 🟢 items and MUST exit `0` reporting 0 bytes
+- **Then** the tool MUST find no new reclaimable items and MUST exit `0` reporting 0 bytes
   reclaimed (idempotence, principle 5).
 
 ### US-014 — Send to macOS Trash instead of staging
@@ -230,16 +245,23 @@ I can judge the tool's reasoning rather than trust it blindly.*
 - **Given** any finding,
 - **When** I inspect it (TUI detail or `--json`),
 - **Then** the tool MUST expose the evidence (e.g. mtime/last-access, regenerability, path
-  confidence, lock/in-use state) and the resulting risk level and safety score (Article 4.2).
+  confidence, lock/in-use state). (Risk level and safety score are internal-only in v0.6 and are
+  not surfaced to the user.)
 
-### US-020 — Typed confirmation for dangerous items
-*As Mai (P1), I want 🔴 dangerous items to require me to type a confirmation, so that I can
-never delete something irreplaceable by a stray keypress.*
+### US-020 — Stray-keypress mistakes are recoverable
+*As Mai (P1), I want to never lose something irreplaceable to a stray keypress, so that any
+mistake can be undone.*
 
-- **Given** a 🔴 item selected for cleaning,
-- **When** I attempt to confirm,
-- **Then** the tool MUST require an explicit typed confirmation for that action and MUST NOT
-  proceed on a single keystroke (Article 4.1).
+- **Given** any item selected for cleaning,
+- **When** I confirm,
+- **Then** the tool MUST move it to Staging (never hard-delete) so it can be restored
+  byte-for-byte via `cleaner undo`, and the protected-path guard MUST still refuse untouchable
+  paths (US-016).
+
+> **Not shipped in v0.6.** The original intent — a typed-confirmation gate for 🔴 dangerous
+> items — was dropped with the risk tiers. v0.6 has no dangerous tier and no typed-confirm
+> prompt; reversibility (staging + `cleaner undo`) plus the protected-path guard is the safety
+> mechanism instead.
 
 ### US-021 — Warn on in-use / locked files
 *As Diego (P2), I want the tool to detect and skip files that are currently open or locked
@@ -278,8 +300,9 @@ jobs don't hang.*
 
 - **Given** `--yes` (and/or `--ci`) with no TTY,
 - **When** `cleaner clean --yes` runs in CI,
-- **Then** the tool MUST never prompt, MUST proceed under the 🟢-only default (Article 4.1),
-  and MUST exit with a deterministic code (`0`/`3`/`4`/…) usable in pipeline logic.
+- **Then** the tool MUST never prompt, MUST proceed non-interactively cleaning everything found
+  (v0.6 has no risk filter; all actions are staged and reversible), and MUST exit with a
+  deterministic code (`0`/`3`/`4`/…) usable in pipeline logic.
 
 ### US-025 — Governed automation policy
 *As Priya (P3), I want unattended runs to be governed by a signed policy that scopes what may be
@@ -338,7 +361,8 @@ tool also reclaims junk it doesn't know about by default.*
 - **Given** a user target rule in config (Article 3 glossary),
 - **When** scanning,
 - **Then** the tool MUST include matching paths as findings **only** within the allow-space
-  (never overriding protected paths, Article 5), with a conservative default risk.
+  (never overriding protected paths, Article 5). (User target rules carry no user-facing risk in
+  v0.6; the internal classifier stays conservative.)
 
 ### US-031 — Save and reuse a profile
 *As Sam (P4), I want to save my plugin selection and options as a named profile, so that my
@@ -385,7 +409,7 @@ it.*
 - **Given** `cleaner report --json` (or `clean --json`),
 - **When** invoked,
 - **Then** the tool MUST emit a documented, stable JSON schema including session UUID, items,
-  dispositions, sizes, risk levels, timings, and exit status.
+  dispositions, sizes, timings, and exit status. (Risk levels are not part of the v0.6 schema.)
 
 ### US-036 — Export a shareable report
 *As Sam (P4), I want to export a report as Markdown/HTML, so that I can save or share it.*
@@ -419,23 +443,25 @@ can review outcomes in a retro.*
 
 ### US-039 — Xcode/simulator cleanup
 *As Mai (P1), I want a plugin that understands Xcode DerivedData, archives, device support, and
-stale simulators/runtimes, so that my #1 junk source is handled with the right risk levels.*
+stale simulators/runtimes, so that my #1 junk source is handled safely.*
 
 - **Given** the Xcode plugin enabled,
 - **When** scanning,
-- **Then** it MUST classify DerivedData as 🟢, and MUST classify booted/named/in-use simulators
-  conservatively (never 🟢), exposing evidence (US-019).
+- **Then** it MUST offer DerivedData for cleaning, and MUST conservatively exclude
+  booted/named/in-use simulators by default (not offer them), exposing evidence (US-019). (v0.6
+  surfaces no risk colors; the classifier is internal-only.)
 
 ### US-040 — Docker cleanup without losing data
 *As Diego (P2), I want a Docker plugin that reclaims images/build-cache/dangling layers but
-treats volumes with data as high-risk, so that I never lose a database volume.*
+conservatively excludes volumes with data, so that I never lose a database volume.*
 
 - **Given** the Docker plugin enabled,
 - **When** scanning,
-- **Then** dangling images/build cache MUST be 🟢/🟡 as appropriate, named volumes with data
-  MUST be 🔴 and never auto-cleaned, and a running container's resources MUST be treated as
-  in-use (US-021). If Docker is not installed/running, the plugin MUST be skipped gracefully
-  (reported, exit unaffected).
+- **Then** dangling images/build cache MUST be offered for cleaning, named volumes with data
+  MUST be conservatively excluded (not offered by default) and never auto-cleaned, and a running
+  container's resources MUST be treated as in-use (US-021). If Docker is not installed/running,
+  the plugin MUST be skipped gracefully (reported, exit unaffected). (v0.6 surfaces no risk
+  colors; classification is internal-only.)
 
 ### US-041 — Duplicate finder
 *As Sam (P4), I want to find and remove duplicate files, keeping one copy, so that I reclaim
@@ -454,8 +480,8 @@ decide on big items the category plugins don't cover.*
 - **Given** the large/old-file plugin with size/age thresholds,
 - **When** scanning,
 - **Then** it MUST list qualifying files with size, last-access date, and Spotlight kind, MUST
-  classify user-content-root files as 🔴 (or exclude them per Article 5), and MUST require
-  explicit selection (never pre-select).
+  conservatively exclude user-content-root files (per Article 5), and MUST require explicit
+  selection before any file is acted on.
 
 ---
 
@@ -478,9 +504,10 @@ decide on big items the category plugins don't cover.*
   first-class `cleaner rollback` with `--last`/`--session`; keep wording spec-08-final.*
 - **OQ-04.2** Is `--trash` (US-014) worth the extra disposition path in v1, given staging
   already provides reversibility? *Leaning: yes, low cost, matches Sam's Finder workflow.*
-- **OQ-04.3** Do user target rules (US-030) need their own risk-scoring, or do they default to
-  🔴 pending user override? *Leaning: conservative default (never 🟢 without evidence),
-  decided in spec 22.*
+- **OQ-04.3** ~~Do user target rules (US-030) need their own risk-scoring, or do they default to
+  a most-conservative tier pending user override?~~ **Resolved:** v0.6 ships without user-facing
+  risk tiers; user target rules carry no risk color, the internal classifier stays conservative,
+  and matching paths are never acted on without explicit selection.
 - **OQ-04.4** Should `analyze` and `clean` share one scan (analyze = clean's preview phase) to
   avoid double-scanning (US-001 vs US-007)? *Leaning: yes; formalize in spec 17/20.*
 - **OQ-04.5** How granular is per-item deselection in the TUI for very large sets (US-012) —

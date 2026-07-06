@@ -6,9 +6,15 @@
 > This spec enumerates **what** the tool does. Every capability from the brief is a numbered
 > `FR-###` with an RFC-2119 priority and an owning module. Non-functional targets live in 07;
 > the command surface that exposes these FRs lives in 08; the safety constants they obey live
-> in Constitution Articles 4–5. Where an FR names an icon (🟢🟡🔴), a disposition
+> in Constitution Articles 4–5. Where an FR names a disposition
 > (`stage`/`trash`/`purge`/`skip`), a recoverability class (`instant`/`manual`/`hard`/`none`),
 > or an exit code, the source of truth is the Constitution.
+>
+> **v0.6 as-built note.** Risk grading (🟢🟡🔴 / Safe·Medium·Dangerous, `--all`, `--include
+> medium`, risk-based pre-/auto-selection) was **removed**. `RiskLevel`/`SafetyScore` survive
+> only as unused internal metadata and drive no selection, display, or confirmation. Every
+> source is staged and recoverable via `cleaner undo`. FRs below keep their IDs; where behavior
+> changed the wording is updated and flagged inline rather than deleted.
 
 ## 1. Purpose & reading guide
 
@@ -47,35 +53,37 @@ Findings and reports only.
 ## 3. Category (b) — Cleaning categories (one FR per category)
 
 Every cleaning FR is realized by a **plugin** (Constitution principle 7). Each MUST: declare
-its roots (intersected with the allow-space, deny-list subtracted, per Article 5); classify
-each Finding with a risk icon + safety score (Article 4); default to disposition `stage`
-unless stated; be **idempotent** (principle 5); and measure Reclaim as allocated bytes freed
-(CC-10). Risk defaults below are the *plugin's baseline*; the shared scorer (spec 22) may
-lower them per-Item on evidence.
+its roots (intersected with the allow-space, deny-list subtracted, per Article 5); default to
+disposition `stage` unless stated; be **idempotent** (principle 5); and measure Reclaim as
+allocated bytes freed (CC-10). *(v0.6: cleaning is no longer risk-graded — every source is
+staged and recoverable via `cleaner undo`; the per-plugin risk baseline and shared scorer are
+retired.)* The **Category** column groups each source for reporting: Developer Cache, Browser
+Cache, Application Cache, Logs & Crash Reports, Trash. Rows marked *(roadmap)* are specified
+but not yet shipped in v0.6.
 
-| FR | Priority | Category / requirement | Risk default | Owning plugin |
+| FR | Priority | Category / requirement | Category | Owning plugin |
 |---|---|---|---|---|
-| **FR-020** | MUST | **Xcode** junk: device support, iOS DeviceSupport, old archives, `Xcode/DerivedData` umbrella, module cache, Previews caches. Archive removal is 🟡 (may hold shippable builds). | 🟢/🟡 | `XcodePlugin` |
-| **FR-021** | MUST | **DerivedData**: per-project `~/Library/Developer/Xcode/DerivedData/<proj-hash>`; fully regenerable. | 🟢 | `DerivedDataPlugin` |
-| **FR-022** | MUST | **Simulators**: unavailable/orphaned simulator devices and their data, via `xcrun simctl` fallback adapter; unused simulator *runtimes* are 🟡. | 🟢/🟡 | `SimulatorPlugin` |
-| **FR-023** | MUST | **SwiftPM**: `~/Library/Caches/org.swift.swiftpm`, per-project `.build`, cloned-dependency cache. | 🟢 | `SwiftPMPlugin` |
-| **FR-024** | MUST | **CocoaPods**: `~/Library/Caches/CocoaPods`, `~/.cocoapods/repos` spec repos (re-clonable ⇒ 🟡). | 🟢/🟡 | `CocoaPodsPlugin` |
-| **FR-025** | MUST | **npm / yarn / pnpm**: `~/.npm/_cacache`, `~/.cache/yarn`, pnpm store (`~/Library/pnpm/store` / `~/.pnpm-store`), and discovered `node_modules` (🟡: re-installable but costly). | 🟢/🟡 | `NodePlugin` |
-| **FR-026** | MUST | **Python**: pip cache (`~/Library/Caches/pip`), `__pycache__`, `.pyc`, virtualenv/`venv` caches, poetry/pipenv caches. Active venvs are 🟡. | 🟢/🟡 | `PythonPlugin` |
-| **FR-027** | MUST | **Ruby**: gem cache, bundler cache (`~/.bundle/cache`), `vendor/bundle` (🟡). | 🟢/🟡 | `RubyPlugin` |
-| **FR-028** | MUST | **Java / Gradle / Maven**: `~/.gradle/caches`, Gradle daemon logs, `~/.m2/repository` (re-downloadable ⇒ 🟡), build `target/`/`build/` dirs. | 🟢/🟡 | `JvmPlugin` |
-| **FR-029** | SHOULD | **Android Studio**: `~/Library/Caches/Google/AndroidStudio*`, AVD system images/snapshots, `~/.android/avd` (🟡), Gradle overlap deduped with FR-028. | 🟢/🟡 | `AndroidPlugin` |
-| **FR-030** | MUST | **Docker**: reclaimable images/containers/volumes/build-cache via `docker system df`/`prune` fallback adapter; NEVER prunes running containers or named volumes without explicit opt-in (🔴 for volumes). | 🟢/🔴 | `DockerPlugin` |
-| **FR-031** | MUST | **Homebrew**: `brew cleanup` targets — old formula versions, download cache (`~/Library/Caches/Homebrew`), stale downloads; via native cache-path scan with `brew` adapter fallback. | 🟢 | `HomebrewPlugin` |
-| **FR-032** | MUST | **Chrome cache**: `~/Library/Caches/Google/Chrome`, profile `Cache`/`Code Cache`/`GPUCache`; NEVER touches profile data, cookies, passwords, history (deny-listed). | 🟢 | `ChromeCachePlugin` |
-| **FR-033** | MUST | **Safari cache**: `~/Library/Caches/com.apple.Safari`, WebKit cache; NEVER touches bookmarks/history/passwords. | 🟢 | `SafariCachePlugin` |
-| **FR-034** | MUST | **Logs**: `~/Library/Logs`, `/Library/Logs` (user-readable), rotated app logs; retains most-recent N per app by default (🟡 for recent). | 🟢/🟡 | `LogsPlugin` |
-| **FR-035** | MUST | **Crash reports**: `~/Library/Logs/DiagnosticReports`, `.crash`/`.ips` diagnostic files. | 🟢 | `CrashReportsPlugin` |
-| **FR-036** | SHOULD | **Mail downloads**: `~/Library/Containers/com.apple.mail/Data/Library/Mail Downloads` temporary attachments (🟡: user may not have saved them elsewhere). | 🟡 | `MailDownloadsPlugin` |
-| **FR-037** | MUST | **Trash**: enumerate `~/.Trash` and per-volume `.Trashes`; report size; emptying is 🟡 (user-visible deletions) and disposition `purge` (already the user's Trash — no re-staging). | 🟡 | `TrashPlugin` |
-| **FR-038** | MUST | **Generic cache**: `~/Library/Caches/*` for apps without a dedicated plugin, using heuristics (dir named `Cache*`, regenerable evidence). Unknown apps ⇒ 🟡. | 🟢/🟡 | `GenericCachePlugin` |
-| **FR-039** | MUST | **Temporary files**: `$TMPDIR`, `/private/var/folders` user-owned temp, `/tmp` user-owned entries older than a threshold. | 🟢 | `TempFilesPlugin` |
-| **FR-040** | MUST | **Build artifacts**: generic discovery of regenerable build outputs (`build/`, `target/`, `.build/`, `DerivedData`, `dist/`, `out/`, `.next/`, `.gradle/`) under user project roots, gated by presence of a matching build manifest. | 🟡 | `BuildArtifactsPlugin` |
+| **FR-020** | MUST | **Xcode** junk: device support, iOS DeviceSupport, old archives, `Xcode/DerivedData` umbrella, module cache, Previews caches. Archive removal may hold shippable builds, so (like everything) it is staged and recoverable. | Developer Cache | `XcodePlugin` |
+| **FR-021** | MUST | **DerivedData**: per-project `~/Library/Developer/Xcode/DerivedData/<proj-hash>`; fully regenerable. | Developer Cache | `DerivedDataPlugin` |
+| **FR-022** | MUST | **Simulators**: unavailable/orphaned simulator devices and their data, via `xcrun simctl` fallback adapter; also unused simulator *runtimes*. | Developer Cache | `SimulatorPlugin` |
+| **FR-023** | MUST | **SwiftPM**: `~/Library/Caches/org.swift.swiftpm`, per-project `.build`, cloned-dependency cache. | Developer Cache | `SwiftPMPlugin` |
+| **FR-024** | MUST | **CocoaPods**: `~/Library/Caches/CocoaPods`, `~/.cocoapods/repos` spec repos (re-clonable). | Developer Cache | `CocoaPodsPlugin` |
+| **FR-025** | MUST | **npm / yarn / pnpm**: `~/.npm/_cacache`, `~/.cache/yarn`, pnpm store (`~/Library/pnpm/store` / `~/.pnpm-store`), and discovered `node_modules` (re-installable but costly). | Developer Cache | `NodePlugin` |
+| **FR-026** | MUST | **Python**: pip cache (`~/Library/Caches/pip`), `__pycache__`, `.pyc`, virtualenv/`venv` caches, poetry/pipenv caches. | Developer Cache | `PythonPlugin` |
+| **FR-027** | MUST | **Ruby** *(roadmap)*: gem cache, bundler cache (`~/.bundle/cache`), `vendor/bundle`. | Developer Cache | `RubyPlugin` |
+| **FR-028** | MUST | **Java / Gradle / Maven**: `~/.gradle/caches`, Gradle daemon logs, `~/.m2/repository` (re-downloadable), build `target/`/`build/` dirs. | Developer Cache | `JvmPlugin` |
+| **FR-029** | SHOULD | **Android Studio** *(roadmap)*: `~/Library/Caches/Google/AndroidStudio*`, AVD system images/snapshots, `~/.android/avd`, Gradle overlap deduped with FR-028. | Developer Cache | `AndroidPlugin` |
+| **FR-030** | MUST | **Docker**: reclaimable images/containers/volumes/build-cache via `docker system df`/`prune` shell adapter; NEVER prunes running containers or named volumes without explicit opt-in (volumes hold user data). | Developer Cache | `DockerPlugin` |
+| **FR-031** | MUST | **Homebrew**: `brew cleanup` targets — old formula versions, download cache (`~/Library/Caches/Homebrew`), stale downloads; via native cache-path scan with `brew` adapter fallback. | Developer Cache | `HomebrewPlugin` |
+| **FR-032** | MUST | **Chrome cache**: `~/Library/Caches/Google/Chrome`, profile `Cache`/`Code Cache`/`GPUCache`; NEVER touches profile data, cookies, passwords, history (deny-listed). Edge/Brave follow the same cache-only rule. | Browser Cache | `ChromeCachePlugin` |
+| **FR-033** | MUST | **Safari cache**: `~/Library/Caches/com.apple.Safari`, WebKit cache; NEVER touches bookmarks/history/passwords. Firefox follows the same cache-only rule. | Browser Cache | `SafariCachePlugin` |
+| **FR-034** | MUST | **Logs**: `~/Library/Logs`, `/Library/Logs` (user-readable), rotated app logs; retains most-recent N per app by default. | Logs & Crash Reports | `LogsPlugin` |
+| **FR-035** | MUST | **Crash reports**: `~/Library/Logs/DiagnosticReports`, `.crash`/`.ips` diagnostic files. | Logs & Crash Reports | `CrashReportsPlugin` |
+| **FR-036** | SHOULD | **Mail downloads** *(roadmap)*: `~/Library/Containers/com.apple.mail/Data/Library/Mail Downloads` temporary attachments (user may not have saved them elsewhere). | Application Cache | `MailDownloadsPlugin` |
+| **FR-037** | MUST | **Trash**: enumerate `~/.Trash` and per-volume `.Trashes`; report size. *(v0.6: emptying stages the Trash contents like every other source, so it is recoverable via `cleaner undo` — no longer an irreversible `purge`.)* | Trash | `TrashPlugin` |
+| **FR-038** | MUST | **Generic / Application cache**: `~/Library/Caches/*` for apps without a dedicated plugin, using heuristics (dir named `Cache*`, regenerable evidence). | Application Cache | `GenericCachePlugin` |
+| **FR-039** | MUST | **Temporary files** *(roadmap)*: `$TMPDIR`, `/private/var/folders` user-owned temp, `/tmp` user-owned entries older than a threshold. | Application Cache | `TempFilesPlugin` |
+| **FR-040** | MUST | **Build artifacts** *(roadmap)*: generic discovery of regenerable build outputs (`build/`, `target/`, `.build/`, `DerivedData`, `dist/`, `out/`, `.next/`, `.gradle/`) under user project roots, gated by presence of a matching build manifest. | Developer Cache | `BuildArtifactsPlugin` |
 
 **FR-041 (MUST, PluginHost).** Each cleaning plugin MUST expose the same lifecycle
 (`declareRoots → scan → classify → plan → dispose`) and MUST be independently selectable via
@@ -93,17 +101,17 @@ Detection produces advisories; acting on them routes through the same Cleanup/St
 
 | FR | Priority | Requirement | Owning module |
 |---|---|---|---|
-| **FR-050** | MUST | **Unused apps**: detect installed `.app`s with no Launch Services launch record and old last-used dates (Spotlight `kMDItemLastUsedDate`). Reports the app + its caches/support; the `.app` bundle itself is deny-listed (Article 5) and only *advised*, never auto-cleaned (🔴). | Detection |
+| **FR-050** | MUST | **Unused apps**: detect installed `.app`s with no Launch Services launch record and old last-used dates (Spotlight `kMDItemLastUsedDate`). Reports the app + its caches/support; the `.app` bundle itself is deny-listed (Article 5) and only *advised*, never auto-cleaned. | Detection |
 | **FR-051** | MUST | **Orphan packages**: package-manager artifacts whose owning project/manifest no longer exists (dangling `node_modules`, `.build`, `vendor/bundle`, pods) — cross-checked with FR-025–028. | Detection |
 | **FR-052** | MUST | **Obsolete SDKs**: old iOS/watchOS/tvOS DeviceSupport and platform SDKs superseded by newer installed versions. | Detection |
 | **FR-053** | MUST | **Stale DerivedData**: DerivedData folders whose source project path is missing or untouched beyond a threshold. | Detection |
 | **FR-054** | MUST | **Old simulator runtimes**: installed runtimes with no devices and superseded by a newer minor/major. | Detection |
-| **FR-055** | MUST | **Old archives**: `Xcode/Archives` older than a threshold; 🟡 (may be needed for re-submission/dSYMs). | Detection |
+| **FR-055** | MUST | **Old archives**: `Xcode/Archives` older than a threshold (may be needed for re-submission/dSYMs). | Detection |
 | **FR-056** | SHOULD | **Unnecessary localizations**: `*.lproj` bundles for languages outside the user's preferred set, inside *cache/support* dirs only (never inside a signed `.app`, which would break the signature — deny-listed). | Detection |
-| **FR-057** | SHOULD | **Temporary downloads**: stale files in `~/Downloads` flagged by `kMDItemWhereFroms` + age; advisory-only, `~/Downloads` is user-content ⇒ 🔴, never auto-selected. | Detection |
+| **FR-057** | SHOULD | **Temporary downloads**: stale files in `~/Downloads` flagged by `kMDItemWhereFroms` + age; advisory-only, `~/Downloads` is user-content, never auto-cleaned. | Detection |
 | **FR-058** | SHOULD | **Duplicate cache**: identical cache blobs across app caches (via FR-004 hashing scoped to cache roots). | Detection |
 | **FR-059** | MUST | **Symlink / hardlink / sparse / APFS-snapshot awareness**: detection MUST identify symlinks (and not follow them out of allowed roots — Article 4.4), collapse hardlink groups (count reclaim once), detect sparse files (report allocated not logical), and recognize APFS local snapshots as *protected* (Article 5) and clones as shared storage (Reclaim = 0 unless last reference). | ScanEngine / Safety |
-| **FR-060** | SHOULD | **Zombie directories**: empty or near-empty leftover directories (only regenerable/empty content) left by uninstalled tools; 🟡. | Detection |
+| **FR-060** | SHOULD | **Zombie directories**: empty or near-empty leftover directories (only regenerable/empty content) left by uninstalled tools. | Detection |
 
 **FR-061 (MUST, Detection).** Every advisory MUST carry **evidence** (Article 3) — the exact
 signals used (mtime/atime, xattrs, Spotlight kind, Launch Services state, manifest presence) —
@@ -118,13 +126,13 @@ JSON) is fully specified in spec 08.
 
 | FR | Priority | Requirement | Owning module |
 |---|---|---|---|
-| **FR-070** | MUST | **`analyze`** MUST run a read-only scan (FR-001–008) and present a storage report + Findings without proposing deletion, exiting `0`. | Engine/CLI |
-| **FR-071** | MUST | **`audit`** MUST run detection advisories (FR-050–061) and emit a prioritized, risk-ranked list of reclaimable opportunities without acting. In `--ci` it MUST map results to the CI health codes (Article 7). | Detection/CLI |
-| **FR-072** | MUST | **`doctor`** MUST check environment health: OS version, Full Disk Access, admin availability, TTY, config validity, plugin load status, staging integrity, free-space headroom — and report 🟢/🟡/🔴 per check. CI mapping: 0 healthy, 3 warnings, 1 critical (Article 7). | CLI/Permissions |
-| **FR-073** | MUST | **`report`** MUST render the last (or a specified) session's results in human, `--json`, Markdown, or HTML form from persisted session data (`~/.cleaner/reports`), without rescanning. | Reporting |
-| **FR-074** | MUST | **`optimize`** MUST run a curated, mostly-🟢 maintenance pass (safe caches + temp + trash-report + logs trim) as a one-shot "make space now" flow, preview-first, honoring `--yes`. It MUST NOT include 🔴 categories. | Engine/CLI |
-| **FR-075** | MUST | **`clean`** MUST execute the preview→confirm→dispose pipeline for selected plugins (default `stage`), and is the primary destructive verb. | CleanupEngine |
-| **FR-076** | MUST | The **interactive `cleaner`** entry (no subcommand, TTY present) MUST launch the TUI (spec 25) navigating Volumes → Categories → Plugins → Findings → Items (spec 09). With no TTY it MUST print help and exit `2` unless a subcommand is given. | TUI/CLI |
+| **FR-070** | MUST | *(was `analyze`)* The default `cleaner` scan phase (and `cleaner --dry-run`) MUST run a read-only scan (FR-001–008) and present per-source Findings + reclaimable totals without deleting; `cleaner find large` / `cleaner find dupes` expose the standalone detectors. *(v0.6: the separate `analyze` command was folded into the default scan and the `find` subcommands.)* | Engine/CLI |
+| **FR-071** | MUST | *(was `audit`)* `cleaner find large\|dupes` MUST run the detectors (FR-050–061, as implemented) and list reclaimable opportunities without acting; `--json`/`--md` emit machine output. *(v0.6: the `audit` command was replaced by `find`.)* | Detection/CLI |
+| **FR-072** | MUST | The hidden **`cleaner doctor`** MUST check environment health: OS version, Full Disk Access, admin availability, TTY, config validity, plugin load status, staging integrity, free-space headroom — and report an ok/warning/critical status per check. CI mapping: 0 healthy, 3 warnings, 1 critical (Article 7). | CLI/Permissions |
+| **FR-073** | MUST | *(was `report`)* Machine-readable session results MUST be emitted inline via `--json`/`--md`, and the staged actions of prior sessions MUST be listable via `cleaner undo --list`. *(v0.6: the separate `report` command was dropped; results are printed inline and recorded for `undo` rather than re-rendered from a report store.)* | Reporting |
+| **FR-074** | MUST | *(was `optimize`)* The default `cleaner` run IS the one-shot "make space now" flow: it scans **all** discovered sources and, on `Y`/`--yes`, cleans them all — every action staged and recoverable. *(v0.6: `optimize` merged into the default command; there is no separate curated verb and no risk-based category exclusion.)* | Engine/CLI |
+| **FR-075** | MUST | *(was `clean`)* The default `cleaner` command MUST execute the preview→confirm→dispose pipeline for the discovered sources (default disposition `stage`), and is the primary destructive command. Confirmation prompt: `Clean all X? [Y = all · s = select each · n = cancel]`, where `s` walks each source with `y/N`. | CleanupEngine |
+| **FR-076** | MUST | The **interactive `cleaner`** entry (no subcommand, TTY present) MUST scan and then present the inline confirmation prompt (`Y` = clean all · `s` = select each source · `n` = cancel). *(v0.6: there is no multi-level TUI navigator or multi-select item picker; selection is a simple per-source `y/N` walk.)* With no TTY and no `--yes`, a destructive run MUST refuse and exit `2`. | CLI |
 
 ---
 
@@ -134,22 +142,22 @@ These apply to **every** destructive command unless noted.
 
 | FR | Priority | Requirement | Owning module |
 |---|---|---|---|
-| **FR-080** | MUST | **Preview-first.** No destructive command disposes of anything before presenting a preview of exactly what will be affected (paths, sizes, risk, disposition, recoverability). (Principle 1.) | Engine |
-| **FR-081** | MUST | **Confirmation.** Interactive runs MUST require explicit confirmation before disposal; 🔴 Items MUST require *typed* confirmation, never a bare `y` (Article 4.1). | TUI/CLI |
+| **FR-080** | MUST | **Preview-first.** No destructive command disposes of anything before presenting a preview of exactly what will be affected (paths, sizes, disposition, recoverability). (Principle 1.) | Engine |
+| **FR-081** | MUST | **Confirmation.** Interactive runs MUST require explicit confirmation before disposal via the `Clean all X? [Y = all · s = select each · n = cancel]` prompt; `s` selects sources individually with `y/N`. *(v0.6: risk-tiered typed confirmation was removed — every action is staged and reversible via `cleaner undo`, so no bare-`y` vs typed distinction applies.)* | CLI |
 | **FR-082** | MUST | **`--dry-run`.** MUST compute and display the full plan and projected Reclaim using the *same* measurement code as a real run (principle 3) and dispose of nothing, exiting `0`. | Engine |
-| **FR-083** | MUST | **`--yes`.** MUST auto-confirm 🟢 (and 🟡 only when `--include medium`) and MUST NEVER auto-clean 🔴 (Article 4.1). Absent a TTY, `clean`/`optimize` without `--yes` (or a signed policy) MUST refuse and exit `2`. | CLI/Safety |
-| **FR-084** | MUST | **`--json`.** Any command MUST emit a versioned (`schemaVersion`) machine-readable result to stdout with all human chrome suppressed; logs/progress go to stderr (spec 08 stdout/stderr contract). | Reporting |
+| **FR-083** | MUST | **`--yes`.** MUST clean **all** discovered sources without prompting. Absent a TTY, a destructive `cleaner` run without `--yes` MUST refuse and exit `2`. *(v0.6: `--yes` no longer filters by risk; there is no `--include medium`, no `--all`, and no red-item exclusion.)* | CLI/Safety |
+| **FR-084** | MUST | **`--json` / `--md`.** Any command MUST emit a versioned (`schemaVersion`) machine-readable result to stdout with all human chrome suppressed; logs/progress go to stderr (spec 08 stdout/stderr contract). | Reporting |
 | **FR-085** | MUST | **`--ci`.** MUST imply non-interactive, `--no-tui`, `--no-color`, stable exit-code semantics (Article 7, incl. doctor/audit mapping) and machine-friendly output; MUST NOT prompt. | CLI |
 | **FR-086** | MUST | **Verbose/debug.** `-v/--verbose` MUST increase human detail; `--debug` MUST emit diagnostic logs (timings, decisions, adapter calls) to stderr without polluting `--json` stdout. | Logging |
 | **FR-087** | MUST | **Staging.** The default disposition MUST be *move-to-staging* (`~/.cleaner/staging/<session-uuid>`), preserving original path + metadata for rollback (principle 2, CC-7). Cross-volume moves MUST fall back to copy-then-remove and MUST verify before removing the source. | Staging |
-| **FR-088** | MUST | **Rollback / restore.** The tool MUST restore staged Items to their original locations on request (`staging restore`), refusing if the destination is now occupied unless `--force`, and MUST record restores in the audit trail. | Staging |
-| **FR-089** | MUST | **Purge.** Permanent deletion MUST be an explicit escalation (`staging purge` or `--no-stage` **with** confirmation), and is the only irreversible operation (Article 3/4.4). | Staging |
+| **FR-088** | MUST | **Rollback / restore.** The tool MUST restore staged Items to their original locations on request via **`cleaner undo`** (with `cleaner undo --list` enumerating sessions), refusing if the destination is now occupied unless `--force`, and MUST record restores in the audit trail. *(v0.6: restore is the `cleaner undo` command; the `staging restore` subcommand name is retired.)* | Staging |
+| **FR-089** | MUST | **Purge.** Permanent deletion (staged items aged past retention, or `--no-stage` **with** confirmation) MUST be an explicit escalation, and is the only irreversible operation (Article 3/4.4). | Staging |
 | **FR-090** | MUST | **macOS Trash disposition.** The tool SHOULD offer `--trash` to route disposal to the system Trash (via `NSWorkspace.recycle`) instead of tool staging, for users who prefer Finder-visible recovery. | CleanupEngine |
 | **FR-091** | MUST | **Cancellation.** Any long-running scan/clean MUST be cancellable (Ctrl-C / `q`) at directory boundaries, leaving the filesystem consistent and exiting `5` (Article 7). Partial disposal MUST be recorded so it can be reported/rolled back. | Engine |
 | **FR-092** | SHOULD | **Resume.** An interrupted scan SHOULD be resumable from a checkpoint (spec 17) rather than restarting from zero. | ScanEngine |
 | **FR-093** | MUST | **Partial-success reporting.** When some Items succeed and others fail/skip, the tool MUST exit `3` and the report MUST list each skipped/failed Item with the reason (principle 3). | Reporting |
-| **FR-094** | MUST | **Include/exclude filtering.** `--include`/`--exclude` MUST filter by plugin id, category, risk level, or path glob, applied deterministically (documented precedence in spec 08). | RuleEngine |
-| **FR-095** | MUST | **Profiles.** Named profiles (`~/.cleaner/profiles/*.yml`) MUST capture plugin selection + options and be invocable via `--profile`; built-in profiles (`developer-daily`, `conservative`, `aggressive`) SHOULD ship (Article 3 "Profile"). | Config |
+| **FR-094** | MUST | **Include/exclude filtering.** `--include`/`--exclude` MUST filter by plugin id, category, or path glob, applied deterministically (documented precedence in spec 08). *(v0.6: risk-level is no longer a filter dimension.)* | RuleEngine |
+| **FR-095** | MUST | **Profiles.** Named profiles in `~/.cleaner/config.yml` (`profiles:` map) MUST capture source selection as `{include, exclude}` lists and be invocable via `--profile`. *(v0.6: profiles carry only `include`/`exclude` — there is no `risky:` field or risk-tiered profile.)* | Config |
 | **FR-096** | MUST | **Whitelist / protected paths.** User whitelist entries MUST be honored in addition to the hard-coded deny-list (Article 5); the engine MUST intersect plugin roots with the allow-space and subtract both lists before any action (Article 4.4). | Safety/RuleEngine |
 | **FR-097** | SHOULD | **Target rules (blacklist).** Users SHOULD be able to add target rules marking additional cleanable paths (Article 3), which MUST still pass all hard invariants (Article 4.4) and MUST NOT override the deny-list. | RuleEngine |
 | **FR-098** | MUST | **Permissions.** When an operation needs Full Disk Access or admin, the tool MUST detect the gap, explain it, and either request elevation scoped to that operation (Authorization Services) or exit `4` — never silently escalate (principle 6, spec 23). | Permissions |
@@ -160,50 +168,52 @@ These apply to **every** destructive command unless noted.
 
 ## 7. Capability Matrix
 
-Columns: **Capability** → owning **Plugin/Module** → **Risk default** → **Recoverability**
+Columns: **Capability** → owning **Plugin/Module** → **Category** → **Recoverability**
 (default disposition) → **Native API used** (primary) → **Shell fallback** (adapter, spec 13).
 "Native" means the primary path is a documented macOS/Foundation API (principle 4); the shell
-column is the isolated, justified fallback where no stable native API exists.
+column is the isolated, justified fallback where no stable native API exists. *(v0.6: the former
+"Risk default" column is gone — cleaning is not risk-graded; every disposition below stages and
+is recoverable via `cleaner undo`.)*
 
-| Capability | Plugin / Module | Risk default | Recoverability (disposition) | Native API (primary) | Shell fallback |
+| Capability | Plugin / Module | Category | Recoverability (disposition) | Native API (primary) | Shell fallback |
 |---|---|---|---|---|---|
-| Disk-usage analysis | ScanEngine | n/a (read) | n/a | `getattrlistbulk`, `URLResourceValues` | — |
-| Storage report | Reporting | n/a | n/a | `statfs`, DiskArbitration | — |
-| Large-file detection | Detection | n/a | n/a | `URLResourceValues` (allocated size) | — |
-| Duplicate detection | Detection | n/a | n/a | CryptoKit SHA-256, `stat` inode | — |
-| Old-file detection | Detection | n/a | n/a | `URLResourceValues` (atime/mtime) | — |
-| Xcode junk | XcodePlugin | 🟢/🟡 | manual (stage) | FileManager, Spotlight | `xcodebuild`/`xcrun` (paths) |
-| DerivedData | DerivedDataPlugin | 🟢 | manual (stage) | FileManager | — |
-| Simulators | SimulatorPlugin | 🟢/🟡 | manual (stage) | FileManager (CoreSimulator dirs) | `xcrun simctl delete` |
-| SwiftPM caches | SwiftPMPlugin | 🟢 | manual (stage) | FileManager | — |
-| CocoaPods | CocoaPodsPlugin | 🟢/🟡 | hard (stage) | FileManager | `pod cache clean` |
-| npm/yarn/pnpm | NodePlugin | 🟢/🟡 | manual (stage) | FileManager | `npm cache clean` |
-| Python caches | PythonPlugin | 🟢/🟡 | manual (stage) | FileManager | `pip cache purge` |
-| Ruby/gems | RubyPlugin | 🟢/🟡 | manual (stage) | FileManager | `gem cleanup`, `bundle` |
-| Java/Gradle/Maven | JvmPlugin | 🟢/🟡 | manual (stage) | FileManager | `gradle`/`mvn` (rarely) |
-| Android Studio | AndroidPlugin | 🟢/🟡 | manual (stage) | FileManager | `avdmanager`, `sdkmanager` |
-| Docker | DockerPlugin | 🟢/🔴 | manual (purge via daemon) | — (no native) | `docker system df`/`prune` |
-| Homebrew | HomebrewPlugin | 🟢 | manual (stage) | FileManager (cache path) | `brew cleanup -s` |
-| Chrome cache | ChromeCachePlugin | 🟢 | manual (stage) | FileManager | — |
-| Safari cache | SafariCachePlugin | 🟢 | manual (stage) | FileManager | — |
-| Logs | LogsPlugin | 🟢/🟡 | manual (stage) | FileManager | — |
-| Crash reports | CrashReportsPlugin | 🟢 | manual (stage) | FileManager | — |
-| Mail downloads | MailDownloadsPlugin | 🟡 | manual (stage) | FileManager (container) | — |
-| Trash | TrashPlugin | 🟡 | none (purge) | FileManager, `NSWorkspace` | — |
-| Generic cache | GenericCachePlugin | 🟢/🟡 | manual (stage) | FileManager, Spotlight | — |
-| Temporary files | TempFilesPlugin | 🟢 | manual (stage) | `confstr(_CS_DARWIN_USER_TEMP_DIR)`, FileManager | — |
-| Build artifacts | BuildArtifactsPlugin | 🟡 | manual (stage) | FileManager | — |
-| Unused apps (advise) | Detection | 🔴 | advisory only | Launch Services, Spotlight | — |
-| Orphan packages | Detection | 🟡 | manual (stage) | FileManager | — |
-| Obsolete SDKs | Detection | 🟡 | hard (stage) | FileManager | `xcrun` |
-| Stale DerivedData | Detection | 🟢 | manual (stage) | FileManager | — |
-| Old simulator runtimes | Detection | 🟡 | hard (stage) | FileManager | `xcrun simctl runtime` |
-| Old archives | Detection | 🟡 | hard (stage) | FileManager | — |
-| Unnecessary localizations | Detection | 🟡 | manual (stage) | FileManager, preferred-languages | — |
-| Temporary downloads | Detection | 🔴 | advisory only | Spotlight `kMDItemWhereFroms` | — |
-| Duplicate cache | Detection | 🟢 | manual (stage) | CryptoKit | — |
-| Symlink/hardlink/sparse/snapshot awareness | ScanEngine/Safety | n/a | n/a | `lstat`, `stat` (st_nlink, st_blocks), DiskArbitration, `fs_snapshot` | — |
-| Zombie directories | Detection | 🟡 | manual (stage) | FileManager | — |
+| Disk-usage analysis | ScanEngine | read-only | n/a | `getattrlistbulk`, `URLResourceValues` | — |
+| Storage report | Reporting | read-only | n/a | `statfs`, DiskArbitration | — |
+| Large-file detection | Detection | read-only | n/a | `URLResourceValues` (allocated size) | — |
+| Duplicate detection | Detection | read-only | n/a | CryptoKit SHA-256, `stat` inode | — |
+| Old-file detection | Detection | read-only | n/a | `URLResourceValues` (atime/mtime) | — |
+| Xcode junk | XcodePlugin | Developer Cache | manual (stage) | FileManager, Spotlight | `xcodebuild`/`xcrun` (paths) |
+| DerivedData | DerivedDataPlugin | Developer Cache | manual (stage) | FileManager | — |
+| Simulators | SimulatorPlugin | Developer Cache | manual (stage) | FileManager (CoreSimulator dirs) | `xcrun simctl delete` |
+| SwiftPM caches | SwiftPMPlugin | Developer Cache | manual (stage) | FileManager | — |
+| CocoaPods | CocoaPodsPlugin | Developer Cache | manual (stage) | FileManager | `pod cache clean` |
+| npm/yarn/pnpm | NodePlugin | Developer Cache | manual (stage) | FileManager | `npm cache clean` |
+| Python caches | PythonPlugin | Developer Cache | manual (stage) | FileManager | `pip cache purge` |
+| Ruby/gems *(roadmap)* | RubyPlugin | Developer Cache | manual (stage) | FileManager | `gem cleanup`, `bundle` |
+| Java/Gradle/Maven | JvmPlugin | Developer Cache | manual (stage) | FileManager | `gradle`/`mvn` (rarely) |
+| Android Studio *(roadmap)* | AndroidPlugin | Developer Cache | manual (stage) | FileManager | `avdmanager`, `sdkmanager` |
+| Docker | DockerPlugin | Developer Cache | manual (purge via daemon) | — (no native) | `docker system df`/`prune` |
+| Homebrew | HomebrewPlugin | Developer Cache | manual (stage) | FileManager (cache path) | `brew cleanup -s` |
+| Chrome cache | ChromeCachePlugin | Browser Cache | manual (stage) | FileManager | — |
+| Safari cache | SafariCachePlugin | Browser Cache | manual (stage) | FileManager | — |
+| Logs | LogsPlugin | Logs & Crash Reports | manual (stage) | FileManager | — |
+| Crash reports | CrashReportsPlugin | Logs & Crash Reports | manual (stage) | FileManager | — |
+| Mail downloads *(roadmap)* | MailDownloadsPlugin | Application Cache | manual (stage) | FileManager (container) | — |
+| Trash | TrashPlugin | Trash | manual (stage) | FileManager, `NSWorkspace` | — |
+| Generic cache | GenericCachePlugin | Application Cache | manual (stage) | FileManager, Spotlight | — |
+| Temporary files *(roadmap)* | TempFilesPlugin | Application Cache | manual (stage) | `confstr(_CS_DARWIN_USER_TEMP_DIR)`, FileManager | — |
+| Build artifacts *(roadmap)* | BuildArtifactsPlugin | Developer Cache | manual (stage) | FileManager | — |
+| Unused apps (advise) | Detection | read-only | advisory only | Launch Services, Spotlight | — |
+| Orphan packages | Detection | read-only | manual (stage) | FileManager | — |
+| Obsolete SDKs | Detection | read-only | hard (stage) | FileManager | `xcrun` |
+| Stale DerivedData | Detection | read-only | manual (stage) | FileManager | — |
+| Old simulator runtimes | Detection | read-only | hard (stage) | FileManager | `xcrun simctl runtime` |
+| Old archives | Detection | read-only | hard (stage) | FileManager | — |
+| Unnecessary localizations | Detection | read-only | manual (stage) | FileManager, preferred-languages | — |
+| Temporary downloads | Detection | read-only | advisory only | Spotlight `kMDItemWhereFroms` | — |
+| Duplicate cache | Detection | read-only | manual (stage) | CryptoKit | — |
+| Symlink/hardlink/sparse/snapshot awareness | ScanEngine/Safety | read-only | n/a | `lstat`, `stat` (st_nlink, st_blocks), DiskArbitration, `fs_snapshot` | — |
+| Zombie directories | Detection | read-only | manual (stage) | FileManager | — |
 
 ---
 
@@ -247,17 +257,18 @@ Each FR MUST, before Phase-B sign-off, trace to ≥1 US, ≥1 UC, ≥1 test, and
 
 ## Open Questions
 
-- **OQ-06.1** Does `optimize` (FR-074) include 🟡 categories behind `--include medium`, or stay
-  strictly 🟢? *Leaning: strictly 🟢 by default, 🟡 opt-in.*
+- **OQ-06.1** *(resolved in v0.6)* Risk-tiered inclusion was dropped entirely: the default
+  `cleaner` run (FR-074) cleans **all** discovered sources; there is no `--include medium` and no
+  🟢/🟡 split.
 - **OQ-06.2** Duplicate detection (FR-004) default scope — whole `$HOME` is expensive; should
   the default be cache/Downloads roots only, with whole-volume behind a flag? *Leaning: scoped.*
-- **OQ-06.3** For `node_modules`/`vendor` (FR-025/027), do we delete in place (🟡) by default or
-  only advise, given re-install cost? *Leaning: advise in `audit`, delete only via explicit
-  `clean --include medium`.*
+- **OQ-06.3** *(resolved in v0.6)* `node_modules`/`vendor` are surfaced and cleaned like any
+  other source when selected (`Y`/`s`/`--yes`); there is no risk gate. Re-install cost is
+  communicated in the preview, and the action is staged/recoverable via `cleaner undo`.
 - **OQ-06.4** Should unnecessary-localization removal (FR-056) be dropped from v1 given code-sign
   risk, keeping it advisory-only? *Leaning: advisory-only in v1.*
-- **OQ-06.5** Trash emptying (FR-037) uses `purge` disposition (no re-stage). Confirm this is
-  acceptable vs. staging the Trash contents (double storage). *Leaning: purge with typed confirm.*
+- **OQ-06.5** *(resolved in v0.6)* Trash emptying (FR-037) **stages** the Trash contents like
+  every other source, so it is recoverable via `cleaner undo` rather than an irreversible purge.
 - **OQ-06.6** Exact age/size default thresholds (FR-003/005/039/055) — pending persona data in
   spec 03; values above are provisional defaults.
 

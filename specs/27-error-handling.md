@@ -310,7 +310,7 @@ Cancellation (Ctrl-C, `q`, timeout) is a **first-class expected outcome**, not a
 ^C
 Cancelling… stopped at a safe boundary.
 Reclaimed so far: 9.8 GiB (staged) · 22 of 42 items · 0 failed
-Undo:  cleaner staging restore 6f1c9c2e     Resume later:  cleaner clean --resume 6f1c9c2e
+Undo:  cleaner undo 6f1c9c2e     Resume later:  cleaner
 exit: 5 (cancelled)
 ```
 

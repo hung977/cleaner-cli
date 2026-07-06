@@ -80,7 +80,7 @@ then the plugin only *detects*, never auto-deletes.
   off** regardless of score: a duplicate is *someone's real file*, and which copy is "the
   duplicate" is a human judgment (the one in `~/Downloads` might be the one they want; the one in a
   curated folder might be canonical). Proposed `SafetyScore ≈ 60`, but the plugin sets a flag the
-  engine honors: **never pre-select, even under `--include medium`; require explicit per-set user
+  engine honors: **never pre-select; require explicit per-set user
   choice** (Principle 1). Under `--yes`, duplicate findings are reported but never actioned.
 - **Suggested keeper heuristic** (advisory only, shown in preview, selects nothing): prefer the
   copy that is oldest (`birthtime`), in a non-`Downloads`/non-temp location, has Finder tags, or is

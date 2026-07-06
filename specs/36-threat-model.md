@@ -190,7 +190,7 @@ checklist ids (`SEC-###`).
                      │                        │            │                                    │
                      │                        │            ▼                                    │
                      │                        │   Findings ──► PREVIEW (TB1) ──► CONFIRM         │
-                     │                        │            (🔴 typed, SR-049; --yes ≠ 🔴 SR-045) │
+                     │                        │            (confirm; --yes stages all, SR-049/045) │
                      │                        │            │                                    │
                      │                        │            ▼  CleanPlan (confirmed)             │
                      │                        │   EXECUTE: per-item TOCTOU re-validate (SR-061)  │

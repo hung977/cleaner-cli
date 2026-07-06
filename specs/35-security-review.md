@@ -129,7 +129,7 @@ threat model can cite them):
 | ID | Control | Mitigates | Enforced by |
 |---|---|---|---|
 | **SEC-50** | **Reversible by default.** Default disposition is `.stage`; permanent `.purge` is an explicit escalation with confirmation. Nothing is `unlink()`-ed when a recoverable path exists. | data loss (RR-2) | SR-052, SR-053, SR-055 |
-| **SEC-51** | **Conservative safety defaults.** 🔴 never pre-selected, 🟡 not pre-selected, `--yes` authorizes only 🟢, missing evidence scores conservatively, low path-confidence caps at 🟡. When in doubt, don't. | THR-017; F1 | SR-015, SR-029, SR-045, SR-057 |
+| **SEC-51** | **Conservative safety defaults.** Nothing is pre-selected for permanent removal — everything is staged and recoverable via `cleaner undo`. `--yes` cleans all detected items but protected paths stay hard-blocked; missing evidence is handled conservatively by refusing to act outside allowed roots. When in doubt, don't. | THR-017; F1 | SR-015, SR-029, SR-045, SR-057 |
 | **SEC-52** | **No network, no telemetry, no self-update code execution by default.** Privacy-by-default; the core cleaning path makes zero network calls. | THR-033 | Principle 10; CC-12 |
 | **SEC-53** | **Fail safe, not open.** Any ambiguity, error, or unmet permission on a *destructive* path results in *not acting* (skip + report), never in acting anyway. Errors map to precise exit codes (4/6/7/8/10). | F1/F2 | SR-062; spec 27 |
 
@@ -172,7 +172,7 @@ Every item is `met` (test-backed), `n/a-v1` (deferred surface, e.g. third-party 
 | SEC-23 / 24 | v2/v3 third-party plugin | n/a-v1 | (gated; re-review on enable) |
 | SEC-30 / 31 / 32 / 33 | Supply chain | met | pinned deps, checksum-verify, notarization check in CI |
 | SEC-40 / 41 / 42 / 43 | Privilege boundaries/entitlements | met | root-guard test, no-AEWP lint, entitlement audit |
-| SEC-50 / 51 / 52 / 53 | Safe defaults | met | default-stage test, --yes-≠🔴 test, fail-safe tests |
+| SEC-50 / 51 / 52 / 53 | Safe defaults | met | default-stage test, --yes-stages-all test, fail-safe tests |
 
 ## 15. Findings & recommendations
 

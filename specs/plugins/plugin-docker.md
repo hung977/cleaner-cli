@@ -68,7 +68,7 @@ There is no filesystem walk. Detection = **read-only Docker API queries** parsed
    last-used where available), `FindingID = "docker:<type>:<id>"` (deterministic, DM-7).
 5. **Volume classification is the safety-critical step:** a volume is eligible for a Finding only
    if it is (a) not attached to any container AND (b) anonymous (unless the user explicitly opts
-   into named-volume handling, which is 🔴 + typed confirm and off by default).
+   into named-volume handling, which is off by default).
 
 ## 4. Roots / paths with justification
 
@@ -83,7 +83,7 @@ but the only actionable reclaim is via the daemon.
 
 | Sub-item | Risk | Score | Rationale |
 |---|---|---|---|
-| Dangling images | 🟡 75 | superseded, rebuildable | pre-shown, not pre-selected under `--yes` unless `--include medium` |
+| Dangling images | 🟡 75 | superseded, rebuildable | pre-shown, not pre-selected under `--yes` |
 | Build cache | 🟢/🟡 80 | rebuildable; large | |
 | Stopped containers | 🟡 70 | re-runnable | |
 | Unused tagged images | 🟡 60 | re-pullable but may be offline cache | opt-in |
@@ -197,8 +197,8 @@ Using a fake `ProcessRunning` returning canned JSON (no real Docker):
 | `pruneAllUnusedImages` | bool | `false` | Also remove tagged-but-unused (re-pull risk). |
 | `pruneStoppedContainers` | bool | `true` | Remove exited/created containers. |
 | `pruneBuildCache` | bool | `true` | Remove BuildKit cache. |
-| `pruneAnonymousVolumes` | bool | `false` | **Danger:** allow removing anonymous unused volumes (🔴, typed confirm). |
-| `pruneNamedVolumes` | bool | `false` | **Hard-gated:** even true still requires per-volume typed confirm; strongly discouraged. |
+| `pruneAnonymousVolumes` | bool | `false` | **Danger:** allow removing anonymous unused volumes (🔴). Off by default. |
+| `pruneNamedVolumes` | bool | `false` | **Hard-gated:** even when true, named volumes are pruned per-volume only; strongly discouraged. |
 | `dockerBinary` | string | `docker` | Path/name of the CLI (validated to exist). |
 
 ## Open Questions

@@ -1,10 +1,19 @@
 # ADR-0004: TUI = Custom Component Layer over ANSI
 
-- **Status:** Accepted
+- **Status:** Superseded (v0.6) — see note below
 - **Date:** 2026-07-06
 - **Deciders:** Architecture
 - **Realizes:** Constitution Article 10 · CC-4 · deep analysis in spec 10 §6
 - **Constitution principles engaged:** 8 (observability/UX clarity), 9 (responsiveness)
+
+> **Superseded by the v0.6 as-built (see specs 09 § note, 25 § 8).** The full-screen,
+> alternate-screen, keyboard-navigated TUI described here — multi-select checkboxes, live in-place
+> tree updates, and the icon-heavy 🟢🟡🔴 rows that motivated the grapheme-width requirement — was
+> built and then **removed**: it mis-rendered on Apple Terminal (which lacks truecolor and
+> mis-parses the escape sequences). What shipped is a **line-based CLI**: a single-line scan
+> spinner, a grouped summary, and a `Clean all / select each (y/N) / cancel` prompt, with
+> truecolor→xterm-256 fallback for colour. There are no risk-tier icons. The decision drivers below
+> are retained for historical context.
 
 ## Context
 

@@ -1,6 +1,6 @@
 # cleaner-cli — Project Constitution
 
-> **Status:** Ratified · **Version:** 1.0 · **Owner:** Architecture · **Last updated:** 2026-07-06
+> **Status:** Ratified · **Version:** 1.1 · **Owner:** Architecture · **Last updated:** 2026-07-06
 >
 > This is the anchor document of the SpecKit suite. Every other specification MUST comply
 > with the principles, conventions, and cross-cutting decisions recorded here. Where a
@@ -15,8 +15,8 @@ The **Constitution** fixes the invariants that all 40+ specification documents s
 the core principles, the glossary, the naming/formatting conventions, the shared decisions
 that would otherwise be re-litigated in every spec, and the map of the specification suite.
 
-Read this first. If a term, a risk level, an exit code, or a directory path appears in any
-other spec, its single source of truth is here.
+Read this first. If a term, a safety guarantee, an exit code, or a directory path appears in
+any other spec, its single source of truth is here.
 
 ---
 
@@ -67,7 +67,7 @@ These principles are ranked. When two principles conflict, the lower-numbered on
 
 11. **Safety is never behind a paywall.** cleaner-cli is open-core: the CLI (this repository) is
     free and open source; a separate paid Pro app builds on the same engine. No safety feature —
-    preview, confirmation, staging, rollback, protected-path enforcement, safety scoring, audit
+    preview, confirmation, staging, rollback, protected-path enforcement, undo, audit
     trail — may EVER be gated, degraded, nagged, or time-limited in any edition. A free user is
     exactly as safe as a Pro user. Monetization may gate *convenience, automation, visualization,
     and scale* — never *protection*, and never the ability to clean. Losing a Pro license MUST
@@ -95,8 +95,8 @@ daemons. These are explicitly v2.x/v3.x (§ spec 38) and MUST NOT leak requireme
 
 | Term | Definition |
 |---|---|
-| **Item** | The atomic unit a plugin reports and the engine acts on: a file, directory, or logical group (e.g. "Xcode DerivedData for project X"). Carries size, path(s), risk, and evidence. |
-| **Finding** | An Item plus the plugin's assessment (risk level, safety score, recoverability, rationale). What the user sees in a preview. |
+| **Item** | The atomic unit a plugin reports and the engine acts on: a file, directory, or logical group (e.g. "Xcode DerivedData for project X"). Carries size, path(s), and evidence. |
+| **Finding** | An Item plus the plugin's assessment (recoverability + rationale). What the user sees in a preview. |
 | **Reclaim** | Space that becomes free after an Item is cleaned. Measured as *actual on-disk allocation freed*, accounting for APFS clones/sparse files, not naive logical size. |
 | **Plugin** | A self-contained unit implementing the `CleanerPlugin` protocol that scans for and cleans one category of junk. |
 | **Scan** | A read-only pass that produces Findings. Never mutates the filesystem. |
@@ -104,10 +104,9 @@ daemons. These are explicitly v2.x/v3.x (§ spec 38) and MUST NOT leak requireme
 | **Staging** | The tool-managed quarantine directory where "deleted" items live until purged. Enables rollback. |
 | **Purge** | Permanent deletion of staged items (the only irreversible operation). |
 | **Rollback** | Restoring staged items to their original location. |
-| **Disposition** | What happens to an Item: `stage`, `trash` (macOS Trash), `purge`, `skip`. |
+| **Disposition** | What happens to an Item: `stage`, `purge`, `skip`. The macOS Trash is itself *staged* (moved to Staging), never purged in place. |
 | **Evidence** | The metadata a plugin gathered to justify a Finding (mtime, xattrs, Spotlight kind, Launch Services registration, etc.). Recorded for auditability. |
-| **Risk Level** | 🟢 Safe / 🟡 Medium / 🔴 Dangerous. See Article 4. |
-| **Safety Score** | 0–100 numeric confidence that removing the Item is harmless. See Article 4. |
+| **Risk Level / Safety Score** | *(Internal, vestigial.)* The `RiskLevel`/`SafetyScore` types still exist in the domain code as optional metadata a plugin may set, but they are **not** used for selection, display, or safety enforcement, and are not surfaced to the user. The safety model rests on the three guarantees in Article 4, not on grading. Do not treat these as shared product constants. |
 | **Whitelist / Protected path** | A path the tool will never touch. |
 | **Blacklist / Target rule** | A user-added rule that marks additional paths as cleanable. |
 | **Session** | One invocation of the tool from process start to exit. Has a UUID, logs, and a report. |
@@ -115,30 +114,48 @@ daemons. These are explicitly v2.x/v3.x (§ spec 38) and MUST NOT leak requireme
 
 ---
 
-## Article 4 — The Safety Model constants (shared by all plugins)
+## Article 4 — The Safety Model (three guarantees, shared by all plugins)
 
-Full model in spec 22. These constants are fixed here because every plugin references them.
+Full model in spec 22. The safety model does **not** grade Items by risk. There is no
+user-facing Safe/Medium/Dangerous grading, no colour coding, no pre-selection, and no
+`--all`/`--include` opt-in tiers. Instead, safety rests on three guarantees that hold for
+every Item, every plugin, and every edition. Every plugin references these.
 
-### 4.1 Risk levels
+### 4.1 Guarantee 1 — You choose
 
-| Level | Icon | Meaning | Default in `clean` | Default in `--yes` |
-|---|---|---|---|---|
-| **Safe** | 🟢 | Regenerated automatically; no user data; loss is invisible. | Pre-selected | Auto-clean |
-| **Medium** | 🟡 | Regenerated but costs time (re-download, re-index, re-build). | Shown, not pre-selected | Skipped unless `--include medium` |
-| **Dangerous** | 🔴 | Could contain irreplaceable data or break tools if wrong. | Shown, never pre-selected, requires typed confirmation | **Never** auto-cleaned |
+Nothing is deleted without an explicit, informed decision.
 
-### 4.2 Safety score (0–100)
+- The primary command scans, then asks: `Clean all X? [Y = all · s = select each · n = cancel]`.
+  - `Y` / Enter cleans everything that was found.
+  - `s` walks each source in turn with a `clean? [y/N]` prompt (default No).
+  - `n` cancels; the filesystem is untouched.
+- `--yes` cleans everything without prompting (for automation).
+- `--dry-run` changes nothing and reports exactly what *would* happen.
 
-Computed per Item by a shared scorer (spec 22) from weighted signals:
-regenerability, presence of user-authored content, recoverability, path confidence,
-last-access recency, and lock/in-use state. Mapping to risk: `>=85 → Safe`,
-`50–84 → Medium`, `<50 → Dangerous`. A plugin may *lower* a computed score with evidence
-but may not *raise* it above the scorer's ceiling without an ADR.
+No colour, no grade, and no default selection stands in for consent: the user (or a signed
+automation policy) always decides.
 
-### 4.3 Recoverability
+### 4.2 Guarantee 2 — Everything is recoverable
 
-`instant` (staged, one-command rollback) · `manual` (re-downloadable/re-buildable by the
-user) · `hard` (external source needed, e.g. re-clone) · `none` (irreversible — forces 🔴).
+Nothing is `unlink()`-ed outright when a recoverable path exists.
+
+- The default disposition is *move-to-staging* under `~/.cleaner/staging/`, session-scoped.
+- `cleaner undo` restores the last clean byte-for-byte (`cleaner undo --list` / `cleaner undo <id>`
+  for older sessions).
+- The macOS Trash is **staged too**, not purged in place — emptying the Trash through the tool
+  is itself reversible until the staged copy is purged.
+- Permanent deletion (Purge) is an explicit escalation, never a default.
+
+Recoverability is still recorded per Finding as `instant` (staged, one-command rollback) ·
+`manual` (re-downloadable/re-buildable by the user) · `hard` (external source needed, e.g.
+re-clone) · `none` (irreversible). It is shown as rationale in the preview; it is *not* a risk
+grade and does not gate selection.
+
+### 4.3 Guarantee 3 — Protected paths can never be touched
+
+A hard deny-list (Article 5) is enforced **in the engine**, independently of plugins, so no
+plugin, rule, or option can reach a protected path. Browsers are treated as **cache-only**:
+the tool may reclaim browser caches but never cookies, history, or passwords.
 
 ### 4.4 Hard invariants (enforced in the engine, not trusted to plugins)
 
@@ -148,6 +165,8 @@ user) · `hard` (external source needed, e.g. re-clone) · `none` (irreversible 
 - Never delete a currently-open/locked file without explicit override.
 - Never purge without staging first, unless `--no-stage` **and** confirmation.
 - Refuse to operate on a path that is a mount root, a system volume, or `/`.
+- Reclaim is measured as true on-disk allocated size, so dry-run figures equal real-run
+  figures. Every action is written to an append-only audit log.
 
 ---
 

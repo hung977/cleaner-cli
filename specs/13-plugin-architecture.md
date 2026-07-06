@@ -91,7 +91,7 @@ public struct CapabilitySet: OptionSet, Sendable {
 ```
 
 Default protocol extension provides `estimate` (sum allocated sizes via provider),
-`audit` (returns `[]`), `rollbackHint` (nil → engine uses default staging restore),
+`audit` (returns `[]`), `rollbackHint` (nil → engine uses default staged-restore path),
 `dispose` (no-op), and `clean` (maps every Item to `.stage`). A minimal plugin therefore
 implements only `manifest`, `declaredRoots`, and `scan`.
 

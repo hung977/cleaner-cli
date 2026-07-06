@@ -6,12 +6,12 @@
 > 25 (TUI components/themes) · **Depended on by:** 27 (error message style), 28 (log routing), 29
 > (consent copy), 31 (CLI snapshot + golden-output tests).
 >
-> The house style for the command-line surface: principles (a CLIG.dev-adapted charter), flag and
-> naming conventions, defaults, dangerous-action policy, `--dry-run`, error/next-step style, machine
-> output, verbosity, TTY/pipe behavior, `--no-input`, help-text style, discoverability, the
-> stdout/stderr/color output guide, the copywriting voice, and localization hooks. RFC-2119 keywords
-> are normative. Where this spec and spec 08 overlap, **spec 08 is the surface of record**; this spec
-> is the *how it should feel*.
+> The house style for the command-line surface as shipped in **v0.6**: principles (a CLIG.dev-adapted
+> charter), flag and naming conventions, defaults, the **clean-all / select-each / cancel** flow,
+> confirm-before-destructive policy, `--dry-run`, error/next-step style, machine output, verbosity,
+> TTY/pipe behavior, help-text style, discoverability, the stdout/stderr/color output guide, the
+> copywriting voice, and localization hooks. RFC-2119 keywords are normative. Where this spec and spec
+> 08 overlap, **spec 08 is the surface of record**; this spec is the *how it should feel*.
 
 ---
 
@@ -21,46 +21,47 @@ These are ranked; when two conflict, the lower number wins. They are the CLI-sur
 Constitution Article 1.
 
 1. **Human-first, scriptable-always.** The default experience is designed for a person at a TTY; but
-   **every** action is fully reachable non-interactively (flags, env, `--json`, `--yes`, `--no-input`)
-   with stable exit codes. No capability is TUI-only (IA-1, NFR-070).
-2. **Safe by default** (principle 1). Destructive verbs preview first, confirm second, execute third.
-   Defaults never surprise a user into data loss: default disposition is reversible `stage`, 🔴 is
-   never auto-selected, `--yes` never touches 🔴.
+   **every** action is fully reachable non-interactively (`--yes`, `--json`, `--md`, env) with stable
+   exit codes. No capability is prompt-only (IA-1, NFR-070).
+2. **Safe by default** (principle 1). The default `cleaner` run **previews first** (a grouped summary)
+   and **confirms second** before touching anything. Cleaned items are **moved to staging** — never
+   permanently deleted in the same step — so any clean is reversible via `cleaner undo`.
 3. **Honest output** (principle 3). Never overstate savings, never claim success not achieved, always
-   report what was skipped and why. Same measurement code for dry-run and real run.
-4. **Consistency.** One grammar for flags, selectors, sizes, and output across every command
-   (spec 08). A user who learns `clean` can predict `optimize`.
+   report what was skipped and why. Same measurement code for `--dry-run` and the real run.
+4. **Consistency.** One grammar for flags, plugin-id selectors, sizes, and output across every command
+   (spec 08). A user who learns the default run can predict `find` and the advanced commands.
 5. **Discoverable.** `--help` everywhere, examples in help, `did you mean` suggestions, `doctor` to
-   diagnose, completions for bash/zsh/fish. The next step is always one command away.
-6. **Respect the environment.** Detect TTY vs pipe; honor `NO_COLOR`, `TERM`, `$EDITOR`, `$PAGER`,
-   reduced-motion, `CI`. Never emit control codes into a pipe.
-7. **Composable.** stdout is the result and pipe-clean; `--json` is a stable contract; exit codes are
-   the script API (Article 7). Chrome goes to stderr so `… --json | jq` just works (NFR-112).
-8. **Minimal, then deep.** Terse by default; `-v`/`-vv` and drilling reveal more. Never dump L3 detail
-   a user didn't ask for (spec 09 §6).
+   diagnose, completions for bash/zsh/fish. The next step is always one command away — and `--dry-run`
+   spells it out in a **NEXT STEPS** block.
+6. **Respect the environment.** Detect TTY vs pipe; honor `NO_COLOR`, `TERM`, `$PAGER`, `CI`. Never
+   emit control codes into a pipe.
+7. **Composable.** stdout is the result and pipe-clean; `--json` and `--md` are stable contracts; exit
+   codes are the script API (Article 7). Chrome goes to stderr so `cleaner --json | jq` just works
+   (NFR-112).
+8. **Minimal, then deep.** Terse by default — a grouped summary, name left and size right; `-v`
+   expands each source to its items. Never dump per-item detail a user didn't ask for (spec 09 §6).
 
 ---
 
 ## 2. Anatomy of a command & naming conventions
 
-`cleaner <noun-or-verb> [subcommand] [args] [--flags]` (spec 08 §1). Conventions:
+`cleaner [subcommand] [args] [--flags]` (spec 08 §1) — the **primary invocation has no subcommand**.
+Conventions:
 
-- **Verbs for actions, nouns for management.** Top-level verbs: `analyze`, `audit`, `clean`,
-  `optimize`, `doctor`, `report`. Management nouns take subcommands: `plugins`, `config`, `staging`,
-  `profile`. This mirrors `git`, `docker`, `gh`.
-- **Flag names:** long `--kebab-case`; short single-letter only for the top ~8 (`-v -y -h`); a short
-  flag's meaning is **stable forever** across commands. Booleans are positive (`--cache` /
-  `--no-cache`), never double-negative. Pairs use the `--flag` / `--no-flag` idiom.
-- **Consistent flag vocabulary** (same name = same meaning everywhere): `--dry-run`, `--yes/-y`,
-  `--json`, `--ci`, `--no-tui`, `--no-color`, `--verbose/-v`, `--debug`, `--config`, `--profile`,
-  `--include/--exclude`, `--plugins`, `--min-size`, `--older-than`, `--all-volumes`, `--output`,
-  `--format`. A concept never gets two spellings.
-- **Values:** sizes accept binary/decimal units (`500MB`, `2GiB`; spec 24 `ByteSize`); durations
-  accept `30d/12h/90m` **or** bare `--older-than <days>` where spec 08 already fixed days; selectors
-  use the spec-08 §2 grammar (`plugin:`, `category:`, `risk:`, `path:`).
-- **No hidden aliases** that change behavior; documented aliases only (`--version` ≡ `version`).
-- **Arguments vs flags:** paths are positional (`analyze ~/Developer`); everything else is a flag.
-  Never make a required flag where a positional reads more naturally.
+- **Default verb is the bare command.** `cleaner` scans and offers to clean. Subcommands are `undo`,
+  `find large`, `find dupes`, and the hidden advanced set (`docker`, `brew`, `doctor`, `profile
+  list`). This mirrors tools whose common path is zero-argument.
+- **Flag names:** long `--kebab-case`; short single-letter only for the very common (`-v`, `-h`); a
+  short flag's meaning is **stable forever**. Booleans are positive; no double-negatives.
+- **Consistent flag vocabulary** (same name = same meaning everywhere): `--dry-run`, `--yes`,
+  `--json`, `--md`, `--verbose/-v`, `--no-color`, `--include`, `--exclude`, `--profile`. A concept
+  never gets two spellings.
+- **Values:** sizes accept binary/decimal units (`100MB`, `2GiB`; spec 24 `ByteSize`); `--include` /
+  `--exclude` take **comma-separated plugin ids** (spec 08 §2) — there is no category/risk/path
+  grammar.
+- **No hidden aliases** that change behavior; documented aliases only.
+- **Arguments vs flags:** paths are positional (`cleaner find large ~/Developer`); everything else is
+  a flag. Never make a required flag where a positional reads more naturally.
 
 ---
 
@@ -68,56 +69,76 @@ Constitution Article 1.
 
 | Concern | Default | Why |
 |---|---|---|
-| Subcommand + TTY | interactive TUI | human-first (FR-076) |
-| Subcommand + no TTY | help, exit `2` | ambiguous non-interactively (spec 08) |
-| Scope | `$HOME` | least surprise; `--all-volumes` widens |
-| Disposition | `stage` (reversible) | reversibility (principle 2) |
-| Risk selection | 🟢 pre-selected, 🟡 shown, 🔴 locked | Article 4.1 |
-| Confirmation | required for destructive verbs | principle 1 |
+| No subcommand | scan all enabled plugins → grouped summary → prompt | human-first (FR-076) |
+| Scope | all enabled plugins | one-command "clean my Mac" intent |
+| Disposition | move to **staging** (reversible via `undo`) | reversibility (principle 2) |
+| Selection at prompt | `Y` = all · `s` = select each · `n` = cancel | explicit choice, no surprise |
+| Confirmation | required before any clean | principle 1 |
 | Color | `auto` (on iff TTY & !NO_COLOR) | respect env |
-| Sort | descending Reclaim | biggest win first (IA-4) |
-| Verbosity | L1/L2 summary | minimal-then-deep |
-| Output | human on stdout, chrome on stderr | composable (§ 7) |
+| Sort | descending Reclaimable | biggest win first (IA-4) |
+| Verbosity | grouped summary (source name + size) | minimal-then-deep |
+| Output | human on stdout, prompt/chrome on stderr | composable (§ 7) |
 
-Every default is overridable by config (spec 24) then env then flag (spec 08 precedence). Defaults are
-chosen so the **zero-flag** invocation is the safe, common intent.
-
----
-
-## 4. Dangerous actions
-
-- **Preview → confirm → execute** is mandatory for `clean`, `optimize`, `staging purge`, `staging
-  restore --force`, and any `config set` of an unsafe key (spec 24 §7).
-- **Graduated confirmation:** reversible staging = `[Y/n]` (safe default yes); permanent purge /
-  `--no-stage` = `[y/N]` (safe default no); 🔴 items = **typed-confirm** (type the phrase, Article
-  4.1, spec 25 §4.6). A single keypress never destroys 🔴 data.
-- **`--yes` is bounded:** auto-confirms 🟢 (and 🟡 only with `--include medium`); **never** 🔴; never
-  implies `--no-stage`. `--dry-run --yes` is legal (yes is a no-op).
-- **`--no-stage` (permanent)** requires explicit confirmation interactively, and in `--ci`/`--json`
-  requires `--yes` **and** a signed policy (Article 4.4, spec 08 §4.3, spec 23) — otherwise exit `2`.
-- **Show the blast radius before asking.** The confirm prompt always states item count, total bytes,
-  disposition, recoverability, and (for 🔴) exact paths (spec 09 §6, principle 1).
+Every default is overridable by config (spec 24) then env then flag (spec 08 precedence). The
+**zero-flag** invocation is the safe, common intent: preview, then confirm.
 
 ---
 
-## 5. `--dry-run` everywhere
+## 4. The clean flow & dangerous actions
 
-Every mutating command accepts `--dry-run` and produces the **exact** plan it would execute — same
-findings, same totals (measured by the same code, principle 3), same JSON shape (spec 08 §9.3) —
-disposing of nothing, exit `0`.
+The default `cleaner` run is: **scan → grouped summary → confirm → move to staging.** The summary
+lists one line per source (name left, size right; no risk colours, no levels, no emoji; largest
+first), then prompts:
 
 ```
-$ cleaner clean --profile developer-daily --dry-run
+Clean all 24.8 GiB? [Y = all · s = select each · n = cancel]
+```
+
+- **`Y` / Enter** → clean everything found.
+- **`s`** → walk each source in turn, asking `clean? [y/N]` (safe default **no** per source).
+- **`n`** → cancel, exit `5`.
+
+Rules:
+
+- **Confirm before anything is moved.** A clean never runs without either an interactive answer or an
+  explicit `--yes`. Under a non-TTY with neither `--yes` nor `--json`/`--md`, the run previews only
+  (behaves as `--dry-run`) rather than hanging or guessing.
+- **`--yes` cleans everything found, no prompt** — the automation/CI switch. It still moves items to
+  staging (reversible); it never permanently deletes.
+- **Recoverable by design.** Because every clean moves items to staging, there is no separate
+  permanent-delete verb in the primary flow and no typed-confirmation tier — `cleaner undo` is always
+  the escape hatch. Advanced adapter commands (`docker --prune`, `brew --run`) confirm before running
+  and accept `--yes`.
+- **Show the blast radius before asking.** The summary always states the per-source sizes and the
+  total before the prompt (principle 1); `-v` expands each source to its items.
+
+---
+
+## 5. `--dry-run` and NEXT STEPS
+
+`cleaner --dry-run` produces the **exact** grouped summary the real run would act on — same sources,
+same totals (measured by the same code, principle 3), same JSON shape (spec 08 §9.2) — moving
+nothing, exit `0`. It then prints a **NEXT STEPS** block telling the user precisely what to run to
+reclaim and how to undo.
+
+```
+$ cleaner --dry-run
 DRY RUN — nothing will be changed.
-Would stage 42 items · reclaim 24.8 GiB · disposition stage
-  🟢 Safe 38   🟡 Medium 4   🔴 Dangerous 0
-  Largest: DerivedData 21.4 GiB, Docker build cache 4.1 GiB, npm 3.4 GiB
-Re-run without --dry-run to apply, or add --yes to skip the prompt.
+Reclaimable: 24.8 GiB across 6 sources
+  Xcode DerivedData      21.4 GiB
+  Docker build cache      4.1 GiB
+  npm cache               3.4 GiB
+  …
+
+NEXT STEPS
+  Reclaim now:   cleaner            (review the summary, then confirm)
+  No prompt:     cleaner --yes      (clean everything found)
+  Undo later:    cleaner undo       (restore the last clean from staging)
 exit: 0
 ```
 
-Dry-run output is clearly banner-marked (`DRY RUN`) on both human and TUI paths; `--json` sets
-`"dryRun": true`. `--dry-run` is the recommended first step in every destructive example in help.
+Dry-run output is clearly banner-marked (`DRY RUN`) on the human path; `--json` sets `"dryRun":
+true`. `--dry-run` is the recommended first step in every destructive example in help.
 
 ---
 
@@ -128,20 +149,19 @@ Full taxonomy and envelope live in spec 27; the **UX contract** here:
 - Every error states **what went wrong · why · what to do next** (spec 27), on **stderr**, with the
   correct exit code (Article 7).
 - **Suggest the fix, not just the failure.** Permission → the exact System Settings path; bad flag →
-  `did you mean`; unknown plugin → nearest ids; invalid config → file:line + `config validate`.
-- **Never a stack trace** to a user by default (only under `--debug`). Never a bare error code.
+  `did you mean`; unknown plugin id → nearest ids; invalid config → file:line.
+- **Never a stack trace** to a user by default. Never a bare error code.
 
 ```
-$ cleaner clean --plugins derved-data
+$ cleaner --include derved-data
 error: unknown plugin "derved-data"                                       [stderr]
   did you mean:  derived-data ?
-  list plugins:  cleaner plugins list
 exit: 2 (usage)
 ```
 
 ```
-$ cleaner analyze ~/Library/Mail
-error: can't read ~/Library/Mail — Full Disk Access is required          [stderr]
+$ cleaner find large ~/Library/Mail
+error: can't read ~/Library/Mail — additional disk access is required     [stderr]
   why:  macOS restricts this folder to apps with Full Disk Access
   fix:  System Settings › Privacy & Security › Full Disk Access → enable "cleaner"
         then re-run.  Skipping this folder for now.
@@ -155,61 +175,59 @@ exit: 3 (partial)                     # or 4 if nothing could be read
 
 Normative extension of spec 08 §3:
 
-- **stdout = the result.** Human report or, with `--json`, exactly one JSON document and nothing else
-  (no logs, no color, no progress). Piping stdout must always yield clean data.
-- **stderr = chrome.** Progress bars, spinners, TUI frames, prompts, `-v`/`--debug` diagnostics,
-  warnings, and errors. `cleaner … --json | jq` stays clean because chrome never touches stdout
-  (NFR-112).
-- **Color** only when stdout/stderr respectively is a TTY and neither `NO_COLOR`/`--no-color`/`--ci`
-  is set (spec 25 §6.3). Color is **decoration**; meaning is always in text+icon too (IA-3).
-- **Tables** (spec 25 §4.4) for human TTY output; **plain aligned columns** when piped; **JSON** for
-  machines. Never emit box-drawing into a pipe.
-- **Byte sizes** always labeled binary vs decimal (GiB vs GB), locale-formatted (NFR-081), integers in
-  JSON with a `humanSize` companion (spec 08 §9).
-- **One blank line** between logical sections; no trailing chrome after the last result line so tools
-  like `tail`/`grep` behave.
-- **Quiet completions:** management commands that "did the thing" print a single confirming line
-  (`✔ set staging.retentionDays = 30d`) — not a paragraph.
+- **stdout = the result.** Human summary; with `--json`, exactly one JSON document; with `--md`,
+  exactly the Markdown report (`| Source | Reclaimable |`, no Risk column) and nothing else. Piping
+  stdout must always yield clean data.
+- **stderr = chrome.** Progress lines, the confirm prompt, warnings, and errors. `cleaner --json |
+  jq` stays clean because chrome never touches stdout (NFR-112).
+- **Color** only when the stream is a TTY and neither `NO_COLOR` / `--no-color` is set (spec 25
+  §6.3). Color is **decoration**; meaning is always in text too (IA-3). There are **no risk colours**
+  — sources are neutral; only the size is emphasized.
+- **Tables/aligned columns** for human output (source name left, size right); **plain aligned
+  columns** when piped; **JSON** or **Markdown** for machines/reports. Never emit box-drawing into a
+  pipe.
+- **Byte sizes** always labeled binary vs decimal (GiB vs GB), locale-formatted (NFR-081), integers
+  in JSON with a `humanSize` companion (spec 08 §9).
+- **One blank line** between logical sections; no trailing chrome after the last result line.
+- **Quiet completions:** `undo` and the advanced commands that "did the thing" print a single
+  confirming line — not a paragraph.
 
-### 7.1 Verbosity & quiet levels
+### 7.1 Verbosity
 
 | Level | Flag | Human output |
 |---|---|---|
-| quiet | `-q/--quiet` | only errors + the final result line; no progress |
-| normal | (default) | L1/L2 summary + progress on stderr |
-| verbose | `-v` | + per-plugin L2 detail, per-item where small-N (spec 09 §6) |
-| very verbose | `-vv` | + L3 per-item paths, evidence, dispositions |
-| debug | `--debug` | + timings, decisions, adapter calls → **stderr only** (never stdout, NFR-112) |
+| normal | (default) | grouped summary (source name + size) + progress on stderr |
+| verbose | `-v` | + each source expanded to its underlying items and paths (spec 09 §6) |
 
-`--quiet` and `--json` both suppress progress; `--json` ignores `-v` (machines get full L1+L2+L3
-always, spec 09 §6). `--debug` is orthogonal to `-v` and additive.
+`--json` and `--md` ignore `-v` (machines/reports get full detail always, spec 09 §6). Debug/trace
+diagnostics route to **stderr only** (never stdout, NFR-112) and are gated by `CLEANER_LOG_LEVEL`.
 
 ---
 
-## 8. Machines: `--json`, `--ci`, exit codes, `--no-input`
+## 8. Machines: `--json`, `--md`, `--yes`, exit codes
 
-- **`--json`** — the machine contract (spec 08 §9): single versioned document on stdout, `exitCode`/
-  `exitReason` echoed, unknown-field-forward-compatible. Implies non-interactive; a required prompt
-  without `--yes`/policy is an error (exit `2`), never a hang.
-- **`--ci`** — implies `--no-tui --no-color --no-input`; stable exit codes; never prompts; maps
-  `doctor`/`audit` health to `0/3/1` (Article 7). Also auto-enabled when `$CI` is truthy (a convenience,
-  overridable by `--no-ci`? — see OQ-26.1).
-- **`--no-input`** — the automation switch: the tool MUST NOT read stdin or prompt; any point that
-  would prompt instead errors with a message naming the flag/policy that would satisfy it (exit `2`).
-  Distinct from `--yes` (which *answers* prompts): `--no-input` *forbids* them.
+- **`--json`** — the machine contract (spec 08 §9): single versioned document on stdout, `exitCode` /
+  `exitReason` echoed, unknown-field-forward-compatible. Implies non-interactive; never prompts,
+  never hangs.
+- **`--md`** — a Markdown report on stdout (`| Source | Reclaimable |`, no Risk column) for pasting
+  into issues/PRs. Also non-interactive.
+- **`--yes`** — clean everything found without prompting. Still moves to staging (reversible via
+  `undo`); the automation switch for CI.
 - **Exit codes are the API** (Article 7, spec 08 §10). Scripts branch on the code; humans read the
   message. `0` ok · `2` usage · `3` partial · `4` permission · `5` cancelled · `6` config · `7`
-  plugin · `8` safety · `10` precondition. Every command documents which it can return.
+  plugin · `8` safety · `10` precondition · `11` entitlement. Every command documents which it can
+  return.
 
 ```
 # idiomatic script usage
-if cleaner clean --profile conservative --yes --json > result.json; then
+if cleaner --yes --json > result.json; then
   reclaimed=$(jq -r '.result.humanSize' result.json)
-  echo "freed $reclaimed"
+  echo "freed $reclaimed (staged — undo with: cleaner undo)"
 else
   case $? in
     3) echo "some items skipped — see result.json .result.skipped" ;;
     4) echo "grant Full Disk Access and retry" ;;
+    5) echo "cancelled" ;;
     *) echo "clean failed ($?)" ;;
   esac
 fi
@@ -219,16 +237,15 @@ fi
 
 ## 9. TTY, pipes, and progress in non-TTY
 
-- **Detect, don't assume.** Interactive TUI renders only when stderr is a TTY and none of
-  `--no-tui/--ci/--json` is set (spec 08 §3.4). Otherwise: linear plain output.
-- **Piped stdout** ⇒ no color, no cursor codes, no TUI; result is plain/JSON. Piped **stderr** ⇒
-  progress degrades to periodic plain lines (spec 25 §4.1), rate-limited, or silent under
-  `--quiet`/`--ci`.
+- **Detect, don't assume.** The confirm prompt renders only when stdin is a TTY and none of `--yes` /
+  `--json` / `--md` is set (spec 08 §3.4). Otherwise: linear plain output; a non-TTY run without
+  `--yes` previews only (as `--dry-run`) rather than blocking.
+- **Piped stdout** ⇒ no color, no cursor codes; result is plain / JSON / Markdown. Piped **stderr** ⇒
+  progress degrades to periodic plain lines (spec 25 §4.1), rate-limited.
 - **Non-TTY progress:** in a CI log, emit a plain progress line at ≥ 500 ms intervals and on phase
-  boundaries (NFR-022) — enough to prove liveness, not a spinner spam. `--ci` prefers milestone lines
-  (`scan: done 4.6M files 68s`) over percentages.
-- **Pager:** long human output on a TTY may page via `$PAGER` (default `less -R`) when
-  `ui.pager: auto` (spec 24); never page when piped or `--no-input`.
+  boundaries (NFR-022) — enough to prove liveness, not a spinner spam.
+- **Pager:** long human output on a TTY may page via `$PAGER` (default `less -R`) when `ui.pager:
+  auto` (spec 24); never page when piped.
 
 ---
 
@@ -236,49 +253,46 @@ fi
 
 - **Every node has `--help`** (swift-argument-parser, CC-2). Structure: one-line abstract → usage →
   arguments → options (grouped) → **Examples** → See also. Abstracts are a single imperative sentence.
-- **Examples are mandatory** on every action command and show the safe path first (`--dry-run` before
-  the real run). Copy-pasteable, real flags, realistic paths.
-- **Discoverability:** `cleaner` with no args + TTY opens the TUI (the friendliest front door);
-  `cleaner help <topic>` and `cleaner <cmd> -h`; `did you mean` on typos (Levenshtein over the command
-  + plugin id sets); `doctor` diagnoses environment; `completion` for shells.
-- **Progressive help:** `-h` is terse (abstract + common flags + 2 examples); `--help` is full.
-- **`See also`** cross-links related commands (e.g. `clean` → "preview with --dry-run; undo with
-  staging restore").
+- **Examples are mandatory** and show the safe path first (`--dry-run` before the real run).
+  Copy-pasteable, real flags, realistic paths.
+- **Discoverability:** `cleaner` with no args scans and previews (the friendliest front door);
+  `cleaner <cmd> -h`; `did you mean` on typos (Levenshtein over the command + plugin-id sets);
+  `doctor` diagnoses the environment; `completion` for shells. The four advanced commands are hidden
+  from the top-level listing (`shouldDisplay:false`) but respond to `--help` when named.
+- **`See also`** cross-links related commands (e.g. the default run → "preview with --dry-run; undo
+  with cleaner undo").
 
 ```
-$ cleaner clean --help
-OVERVIEW: Preview, confirm, and reclaim disk space (the primary cleanup verb).
+$ cleaner --help
+OVERVIEW: Scan for reclaimable disk space, then confirm and clean (moving to recoverable staging).
 
-USAGE: cleaner clean [selectors] [--stage|--trash|--no-stage] [options]
+USAGE: cleaner [options]
 
-SELECTORS:
-  --plugins <ids>          Restrict to these plugin ids (default: all enabled)
-  --include <sel>          plugin:<id>|category:<name>|risk:<safe|medium|dangerous>|path:<glob>
-  --exclude <sel>          Same grammar; --exclude wins over --include
-  --profile <name>         Apply a saved profile's selection + options
+SELECTION:
+  --include <ids>          Restrict to these plugin ids (comma-separated)
+  --exclude <ids>          Drop these plugin ids (comma-separated; wins over --include)
+  --profile <name>         Apply a saved profile's selection
 
-DISPOSITION (mutually exclusive):
-  --stage                  Move to recoverable staging (default; undo anytime)
-  --trash                  Route to macOS Trash
-  --no-stage               Permanent delete — requires confirmation (+ policy in CI)
-
-SAFETY & AUTOMATION:
-  --dry-run                Show the full plan; change nothing (exit 0)
-  -y, --yes                Auto-confirm 🟢 (and 🟡 with --include medium); NEVER 🔴
-      --no-input           Never prompt or read stdin (automation)
+OUTPUT & AUTOMATION:
+  --dry-run                Show the plan + NEXT STEPS; change nothing (exit 0)
+  --yes                    Clean everything found, no prompt (automation/CI)
+  --json                   Emit one machine document on stdout
+  --md                     Emit a Markdown report on stdout
+  -v, --verbose            Expand each source to its underlying items
+      --no-color           Disable color
 
 EXAMPLES:
   # See what would happen — always safe to run:
-  cleaner clean --profile developer-daily --dry-run
+  cleaner --dry-run
 
-  # Auto-clean only the safe items, no prompt:
-  cleaner clean --include risk:safe --yes
+  # Scan and choose at the prompt (all / select each / cancel):
+  cleaner
 
-  # Interactive review of Docker + DerivedData:
-  cleaner clean --plugins docker,derived-data
+  # Clean everything, no prompt:
+  cleaner --yes
 
-SEE ALSO:  analyze (what's using space) · staging restore (undo) · optimize (curated safe)
-EXIT CODES: 0 ok · 3 partial · 4 permission · 5 cancelled · 6 config · 7 plugin · 8 safety
+SEE ALSO:  find large / find dupes (read-only) · undo (restore the last clean)
+EXIT CODES: 0 ok · 3 partial · 4 permission · 5 cancelled · 6 config · 7 plugin · 8 safety · 11 entitlement
 ```
 
 ---
@@ -287,24 +301,26 @@ EXIT CODES: 0 ok · 3 partial · 4 permission · 5 cancelled · 6 config · 7 pl
 
 The voice matches truth-in-reporting (principle 3): **concise, honest, plain, no hype**.
 
-- **Do:** short declaratives; active voice; name the exact number/path; say "staged" when staging,
-  "purged" when purging (spec 09 §5 terminology); use the glossary words verbatim (Reclaimable,
-  Reclaimed, Finding, Item, Stage, Purge, Restore, Safe/Medium/Dangerous).
+- **Do:** short declaratives; active voice; name the exact number/path; say "staged" when moving to
+  staging, "restored" when undoing (spec 09 §5 terminology); use the glossary words verbatim
+  (Reclaimable, Reclaimed, Source, Item, Stage, Restore, Undo).
 - **Don't:** "Blazing-fast!", "Supercharge!", "Free up GBs instantly!"; exclamation marks; scare
   copy; "deleted" when it's recoverable staging; vague "cleaned up some junk" without numbers;
-  anthropomorphizing ("I found…"). The tool reports, it doesn't sell.
-- **Numbers are honest.** Never round up savings; show `12.0 GiB` not "~13 GB". If a step is skipped,
-  say so with the reason. Estimates are labeled "estimated".
+  anthropomorphizing ("I found…"). The tool reports, it doesn't sell. Never name or compare against
+  third-party products.
+- **Numbers are honest.** Never round up savings; show `12.0 GiB` not "~13 GB". If a source is
+  skipped, say so with the reason. Estimates are labeled "estimated".
 - **Warnings are calm and specific.** "2 items are locked and were skipped" — not "⚠️ WARNING!!!".
-- **Success is understated.** "Reclaimed 12.0 GiB (staged — recoverable 30 days)." — one line, true.
+- **Success is understated.** "Reclaimed 12.0 GiB (staged — undo with: cleaner undo)." — one line,
+  true.
 - **Sentence case** for messages and headings; Title Case only for proper nouns and screen titles.
 
 | Instead of | Write |
 |---|---|
-| "🚀 Cleaned up your Mac!" | "Reclaimed 12.0 GiB (staged — recoverable 30 days)." |
+| "🚀 Cleaned up your Mac!" | "Reclaimed 12.0 GiB (staged — undo with: cleaner undo)." |
 | "Deleting files…" (when staging) | "Staging 40 items…" |
 | "Oops! Something went wrong." | "Couldn't read ~/Library/Mail — Full Disk Access required." |
-| "Are you sure???" | "Type `delete` to confirm 2 Dangerous items, or Esc to cancel." |
+| "Are you sure???" | "Clean all 24.8 GiB? [Y = all · s = select each · n = cancel]" |
 | "Freed up tons of space!" | "Freed 12.0 GiB." |
 
 ---
@@ -312,16 +328,17 @@ The voice matches truth-in-reporting (principle 3): **concise, honest, plain, no
 ## 12. Localization hooks
 
 - **Externalize everything.** No user-facing literal in view/CLI code; all strings route through the
-  localization layer (`String(localized:)` / a string catalog), keyed and commented (NFR-080). v1
+  localization layer (`String(localized:)` / a string catalog), keyed and commented (NFR-080). v0.6
   ships `en` only but is fully externalized; adding a locale requires no code change.
 - **Format locale-aware.** Byte sizes via `ByteCountFormatter` (binary/decimal per config), dates via
   `Date.FormatStyle`, numbers via locale grouping (NFR-081). Never hand-format `1,234.5 GB`.
 - **Layout tolerates expansion.** UI budgets ≥ +40 % string growth and double-width scripts without
   misalignment (NFR-082, spec 25 §10). Truncation is grapheme-correct.
-- **The confirm phrase is localization-safe.** `default.confirmPhrase` (spec 24) is user-set and
-  compared after locale-aware case-folding; help shows the active phrase.
-- **`--json` and exit codes are locale-invariant.** Machine surfaces (field names, `exitReason`
-  tokens, schema) are ASCII and never localized; only `message`/`humanSize` display strings localize.
+- **The prompt keys are localization-safe.** The prompt answers (`Y`/`s`/`n`) are compared after
+  locale-aware case-folding; help shows the active keys.
+- **`--json`, `--md` field names, and exit codes are locale-invariant.** Machine surfaces (field
+  names, `exitReason` tokens, schema, Markdown column headers) are ASCII and never localized; only
+  `message` / `humanSize` display strings localize.
 - **Selector keywords, flags, and plugin ids are locale-invariant** (stable API surface); only their
   help text localizes.
 
@@ -329,24 +346,21 @@ The voice matches truth-in-reporting (principle 3): **concise, honest, plain, no
 
 ## Open Questions
 
-- **OQ-26.1** Auto-enable `--ci` when `$CI` is set — helpful default, or too magic? Provide
-  `--no-ci`? *Leaning: auto-enable with a one-line stderr note + `--no-ci` escape.*
-- **OQ-26.2** `-q/--quiet` vs `--json` overlap — should `--quiet` also apply to `--json` runs (it
-  already suppresses progress), or is `--json` implicitly quiet? *Leaning: `--json` is implicitly
-  quiet; `--quiet` is a human-mode modifier.*
-- **OQ-26.3** Do we ship `did you mean` for flag typos too (not just commands/plugins)? swift-argument-
-  parser gives some; do we augment? *Leaning: augment for plugin ids and subcommands, rely on SAP for
-  flags.*
-- **OQ-26.4** Pager default — `less -R` vs never-page-by-default? Some users dislike auto-paging.
-  *Leaning: `auto` = page only when output exceeds one screen on a TTY; documented + `ui.pager`.*
-- **OQ-26.5** Should `--verbose` counting cap at `-vv`, or allow `-vvv` for trace-to-stdout? *Leaning:
-  cap at `-vv`; trace is `--debug` (stderr) to protect the stdout contract.*
+- **OQ-26.1** Auto-detect `$CI` to suppress the prompt (force preview-only unless `--yes`) — helpful
+  default, or too magic? *Leaning: preview-only under `$CI` without `--yes`, with a one-line stderr
+  note.*
+- **OQ-26.2** Should `s` (select each) support a "back"/"all remaining" shortcut mid-walk, or stay a
+  strict per-source `[y/N]`? *Leaning: strict per-source in v0.6; revisit.*
+- **OQ-26.3** Do we ship `did you mean` for flag typos too (not just plugin ids)? swift-argument-
+  parser gives some; do we augment? *Leaning: augment for plugin ids, rely on SAP for flags.*
+- **OQ-26.4** Pager default — `less -R` vs never-page-by-default? *Leaning: `auto` = page only when
+  output exceeds one screen on a TTY; documented + `ui.pager`.*
 
 ## Dependencies
 
 - **Consumes:** 00 (Art. 1 principles, Art. 7 exit codes, glossary), 07 (NFR-070…082, NFR-112), 08
-  (command surface, flags, stdout/stderr contract, JSON schemas — surface of record), 09 (taxonomy,
-  disclosure levels, terminology), 24 (defaults/config/env precedence, confirm phrase, pager/color),
-  25 (components, themes, degradation the CLI text reuses).
-- **Feeds:** 27 (error message style & next-step contract), 28 (what goes to stderr vs files, quiet/CI
+  (command surface, flags, stdout/stderr contract, JSON/Markdown — surface of record), 09 (taxonomy,
+  disclosure levels, terminology), 24 (defaults/config/env precedence, pager/color), 25 (components,
+  themes, degradation the CLI text reuses).
+- **Feeds:** 27 (error message style & next-step contract), 28 (what goes to stderr vs files, CI
   behavior), 29 (consent copy voice), 31 (CLI golden-output + help-text + exit-code snapshot tests).

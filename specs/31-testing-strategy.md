@@ -141,7 +141,7 @@ only via `SNAPSHOT_UPDATE=1 swift test` with the diff reviewed in the PR.
 
 - **TUI frames:** the double-buffered renderer (spec 25/ADR-0004) is driven with a **synthetic terminal**
   (fixed cols×rows, capability profile) and its emitted escape/cell buffer captured as a golden. Covers:
-  progress bar, tree, multi-select, summary; `NO_COLOR`/`--no-color` (NFR-071); CVD-safe theme
+  progress bar, tree, select prompt, summary; `NO_COLOR`/`--no-color` (NFR-071); CVD-safe theme
   (NFR-072); East-Asian/emoji width alignment (NFR-082, `T-width-tables`); **resize** reflow (NFR-024,
   `T-resize`); plain/non-TTY linear output (NFR-070, `T-plain-output`).
 - **JSON output:** `--json` for each command validated against the committed JSON Schema
@@ -149,11 +149,11 @@ only via `SNAPSHOT_UPDATE=1 swift test` with the diff reviewed in the PR.
 - **Reports:** text / Markdown / HTML exports (`CleanerReport`) byte-compared to goldens.
 
 ```swift
-@Test("multiselect frame renders CVD-safe risk labels", .tags(.snapshot, .a11y))
+@Test("multiselect frame renders CVD-safe output", .tags(.snapshot, .a11y))
 func multiSelectFrame() throws {
     let term = SyntheticTerminal(cols: 100, rows: 30, profile: .noColor)   // NFR-071
     let frame = MultiSelect(findings: Fixtures.mixedRisk).render(into: term)
-    assertSnapshot(frame, named: "multiselect-nocolor")   // risk as "Safe/Medium/Dangerous" + 🟢🟡🔴
+    assertSnapshot(frame, named: "multiselect-nocolor")   // sources with reclaim sizes, no color
 }
 ```
 
@@ -212,8 +212,8 @@ Coverage:
 - **Locked/in-use (Art. 4.4):** an open/locked file is skipped unless explicit override.
 - **Stage-before-purge (Art. 4.4):** no `purge` code path reachable without prior stage unless
   `--no-stage` **and** confirmation; asserted by exhausting the disposition state machine.
-- **Confirmation gates (Art. 4.1):** 🔴 dangerous items are never pre-selected and require typed
-  confirmation; `--yes` never auto-cleans 🔴 and skips 🟡 unless `--include medium`.
+- **Confirmation gates (Art. 4.1):** the default run prompts before cleaning (`Y` = all, `s` = select
+  each, `n` = cancel); `--yes` cleans all staged items non-interactively, every clean recoverable via `cleaner undo`.
 - **No escalation (NFR-050, `T-no-escalation`):** no setuid, no persistent helper; elevation only per-op
   via Authorization (faked grant/deny).
 - **Adapter injection (NFR-052, `T-adapter-injection`):** shell-out adapters use argv exec, absolute

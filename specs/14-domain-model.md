@@ -22,8 +22,12 @@ Design rules inherited from the Constitution:
 - **Truth in reporting** (Principle 3, CC-10). Size is always two numbers: logical `size` and
   on-disk `allocatedSize`. Reclaim is computed from `allocatedSize` with clone/hardlink
   correction (see § 6). No entity stores a single ambiguous "size".
-- **Reversibility** (Principle 2). `Disposition` defaults to `.stage`. `Recoverability == .none`
-  forces `RiskLevel == .dangerous`.
+- **Reversibility** (Principle 2). `Disposition` defaults to `.stage` for **every** actioned item,
+  so cleaning is reversible via `cleaner undo` regardless of an item's content-level
+  `Recoverability`.
+- **User-driven selection** (spec 22). What gets cleaned is chosen by the user (`clean all` /
+  `select each` / `--yes`), **not** by a risk tier. `RiskLevel`/`SafetyScore` are retained as
+  vestigial internal metadata (§ 4.2/§ 4.3) and no longer govern selection, gating, or display.
 
 ## 2. Ubiquitous language (domain terms → types)
 
@@ -33,10 +37,10 @@ Extends Constitution Article 3. Where Article 3 and this table overlap, Article 
 | Term | Type | One-line meaning |
 |---|---|---|
 | Item | `Item` | The atomic thing acted on: a file, directory, or logical group of paths. |
-| Finding | `Finding` | An `Item` + a plugin's assessment (risk, score, recoverability, rationale). |
-| Risk level | `RiskLevel` | 🟢 safe / 🟡 medium / 🔴 dangerous. |
-| Safety score | `SafetyScore` | 0–100 confidence that removal is harmless. |
-| Recoverability | `Recoverability` | instant / manual / hard / none. |
+| Finding | `Finding` | An `Item` + a plugin's assessment (recoverability, rationale, reclaim). |
+| Risk level | `RiskLevel` | *Vestigial internal metadata* (safe/medium/dangerous); not surfaced or used for selection. |
+| Safety score | `SafetyScore` | *Vestigial internal metadata* (0–100); not surfaced or used for selection. |
+| Recoverability | `Recoverability` | instant / manual / hard / none (descriptive; staging makes every item recoverable). |
 | Disposition | `Disposition` | What to do with an Item: stage / trash / purge / skip. |
 | Evidence | `Evidence` | The metadata bag justifying a Finding. |
 | Category | `Category` | The bucket a Finding belongs to (developer-cache, browser-cache, …). |
@@ -77,8 +81,8 @@ Extends Constitution Article 3. Where Article 3 and this table overlap, Article 
        │ produced by
        ▼
  ┌──────────────┐        Finding also carries:
- │PluginDescriptor│        RiskLevel, SafetyScore,
- └──────────────┘        Recoverability, Category
+ │PluginDescriptor│        Recoverability, Category, rationale,
+ └──────────────┘        reclaim (+ vestigial RiskLevel/SafetyScore)
 
  Profile ──selects──► [PluginID] + options   (persisted, spec 15)
 ```
@@ -112,32 +116,40 @@ idempotence): it is derived from `PluginID` + a canonicalized primary path (+ di
 grouped items), *not* from a random UUID. This lets incremental scans (spec 17) and rollback
 (spec 21) correlate findings across runs.
 
-### 4.2 `RiskLevel`
+### 4.2 `RiskLevel` — vestigial internal metadata
+
+> **As-built (v0.6):** `RiskLevel` is **retained in the code but removed from the product**. There
+> are no user-facing Safe/Medium/Dangerous tiers, no 🟢/🟡/🔴 icons in the renderer, no risk-based
+> default selection, and no "dangerous is never auto-cleaned" behavior. A `Finding` still carries a
+> `risk` and a plugin may attach one, but it does **not** drive selection, ordering, confirmation,
+> disposition, gating, or display. Selection is user-driven and the only hard gate is the
+> `ProtectedPathGuard` (spec 22 § 6). The type is kept to avoid a wide breaking change to
+> `Finding`, JSON schemas, and plugin signatures.
 
 ```swift
 enum RiskLevel: String, Codable, Sendable, CaseIterable, Comparable {
-    case safe        // 🟢 regenerated automatically; no user data; loss invisible
-    case medium      // 🟡 regenerated but costs time (re-download, re-index, re-build)
-    case dangerous   // 🔴 could contain irreplaceable data or break tools if wrong
-
-    var icon: String {                 // Constitution Article 4.1
-        switch self { case .safe: "🟢"; case .medium: "🟡"; case .dangerous: "🔴" }
-    }
-    // Comparable: safe < medium < dangerous (ascending risk) for sorting/thresholds.
+    case safe        // regenerated automatically; no user data
+    case medium      // regenerated but costs time (re-download, re-index, re-build)
+    case dangerous   // could contain irreplaceable data or break tools if wrong
+    // Comparable: safe < medium < dangerous (ascending). Internal only in v0.6.
 }
 ```
 
-### 4.3 `SafetyScore`
+### 4.3 `SafetyScore` — vestigial internal metadata
+
+> **As-built (v0.6):** like `RiskLevel`, `SafetyScore` is inert product-wise. The old weighted
+> `SafetyScorer` (spec 22) still compiles but is **not invoked** by the scan/clean flow, and the
+> score→risk mapping below no longer gates anything. The score is not surfaced as a safety
+> affordance.
 
 ```swift
-/// 0…100 confidence that removing the item is harmless. Immutable, validated at init.
+/// 0…100. Immutable, validated at init. Internal metadata only in v0.6.
 struct SafetyScore: Hashable, Sendable, Codable, Comparable {
     let value: Int   // INVARIANT: 0...100
 
     init(_ v: Int) { precondition((0...100).contains(v)); value = v }
 
-    /// Constitution Article 4.2 mapping. The scorer (spec 22) owns computation;
-    /// this mapping is fixed here so all specs agree.
+    /// Retained mapping (no longer authoritative — spec 22 § 10).
     var riskLevel: RiskLevel {
         switch value {
         case 85...100: .safe
@@ -148,19 +160,21 @@ struct SafetyScore: Hashable, Sendable, Codable, Comparable {
 }
 ```
 
-Rule (Article 4.2): a plugin MAY **lower** a computed score with evidence but MUST NOT **raise**
-it above the shared scorer's ceiling. Enforced in the engine, not trusted to plugins (§ 5).
-
 ### 4.4 `Recoverability`
 
 ```swift
 enum Recoverability: String, Codable, Sendable, CaseIterable {
-    case instant   // staged; one-command rollback
+    case instant   // staged; one-command `cleaner undo`
     case manual    // re-downloadable / re-buildable by the user
     case hard      // external source needed (e.g. re-clone a repo)
-    case none      // irreversible — FORCES RiskLevel.dangerous (Article 4.3)
+    case none      // no external source to restore the content from
 }
 ```
+
+Descriptive metadata for the rationale/reports. Because the default `Disposition` is `.stage`
+(§ 4.5), **every actioned item is recoverable via `cleaner undo`** until its staging session is
+purged — regardless of this content-level class. (Historically `.none` forced `RiskLevel.dangerous`;
+with risk tiers removed in v0.6 it no longer changes whether or how an item is cleaned.)
 
 ### 4.5 `Disposition`
 
@@ -173,8 +187,11 @@ enum Disposition: String, Codable, Sendable, CaseIterable {
 }
 ```
 
-`.purge` is only reachable via explicit escalation (`--no-stage` + confirmation, or purging
-already-staged items); never a scan/plan default (Constitution Article 4.4).
+`.stage` is the **universal default** for every actioned item. `.purge` is only reachable via
+explicit escalation (`--no-stage` + confirmation, or purging already-staged items); never a
+scan/plan default (Constitution Article 4.4). Note: cleaning the macOS Trash also uses `.stage`
+(not `.purge`) — the Trash plugin moves items into staging so "empty Trash" is itself reversible
+via `cleaner undo`; the tool never empties the Trash irreversibly on the user's behalf.
 
 ### 4.6 `Category`
 
@@ -182,13 +199,14 @@ already-staged items); never a scan/plan default (Constitution Article 4.4).
 struct Category: Hashable, Sendable, Codable, Identifiable {
     let id: CategoryID            // "developer-cache", "browser-cache", "logs", "duplicates", …
     let displayName: String      // "Developer Caches"
-    let parent: CategoryID?      // shallow hierarchy for TUI grouping (spec 25)
-    let defaultRisk: RiskLevel   // suggested baseline; a Finding may override with evidence
+    let parent: CategoryID?      // shallow hierarchy for grouping (spec 25)
+    let defaultRisk: RiskLevel   // vestigial baseline (§ 4.2); not surfaced or acted on
 }
 ```
 
-Categories are a *taxonomy for presentation and bulk selection*, not a safety authority — the
-per-Finding `RiskLevel`/`SafetyScore` govern safety.
+Categories are a *taxonomy for presentation and bulk selection*, not a safety authority. In v0.6
+safety rests on user consent, staging-by-default, and the `ProtectedPathGuard` (spec 22); neither a
+category label nor the vestigial per-`Finding` `RiskLevel`/`SafetyScore` authorizes an action.
 
 ### 4.7 `Evidence`
 
@@ -291,8 +309,6 @@ struct Finding: Sendable, Codable, Hashable, Identifiable {
     let producedBy: PluginID
     let category: CategoryID
 
-    let risk: RiskLevel              // MUST equal safetyScore.riskLevel unless downgraded w/ evidence
-    let safetyScore: SafetyScore
     let recoverability: Recoverability
     let rationale: String            // human-readable "why this is junk" (shown in preview)
     let evidence: Evidence
@@ -302,18 +318,25 @@ struct Finding: Sendable, Codable, Hashable, Identifiable {
 
     /// Suggested disposition (usually .stage). The user/plan may change it.
     let suggestedDisposition: Disposition
-    /// Set by engine, not plugin: is this path allowed (roots ∩ allow − deny)? (Article 5)
+    /// Set by engine, not plugin: is this path allowed (allowedRoots − denyList)? (Article 5)
     let isProtected: Bool
+
+    // ── Vestigial internal metadata (§ 4.2/§ 4.3) — NOT surfaced, NOT used for selection. ──
+    let risk: RiskLevel              // inert; a plugin may attach a tightened value
+    let safetyScore: SafetyScore     // inert
 }
 ```
 
-Invariants (engine-enforced, spec 22):
+Invariants (engine-enforced):
 
-1. `recoverability == .none` ⇒ `risk == .dangerous`.
-2. `risk` is `.safe`/`.medium`/`.dangerous` consistent with `safetyScore.riskLevel`, except a
-   plugin may present a *stricter* (higher-risk) level with evidence; never a *looser* one.
-3. `isProtected == true` ⇒ the Finding is display-only; no `PlannedAction` may target it.
-4. `suggestedDisposition == .purge` is rejected at plan time unless explicit escalation.
+1. `isProtected == true` ⇒ the Finding is **display-only**; no `PlannedAction` may target it
+   (the `ProtectedPathGuard`, spec 22 § 6, is the sole hard gate). Enforced by the cleanup engine.
+2. `suggestedDisposition == .purge` is rejected at plan time unless explicit escalation
+   (`--no-stage` + consent, or purging already-staged items).
+3. `risk`/`safetyScore` are **not** consulted for selection, ordering, or gating in v0.6 — they are
+   vestigial. Selection is user-driven (spec 22 § 4). (The historical "`recoverability == .none` ⇒
+   `risk == .dangerous`" and "risk matches `safetyScore.riskLevel`" invariants are dropped with the
+   risk tiers.)
 
 ### 4.10 `ReclaimEstimate` / `ReclaimActual`
 
@@ -383,7 +406,8 @@ struct ScanResult: Sendable, Codable {
 struct ScanTotals: Sendable, Codable, Hashable {
     let findingCount: Int
     let reclaimable: ReclaimEstimate            // aggregate, de-duplicated for shared blocks
-    let byRisk: [RiskLevel: Int]
+    let byCategory: [CategoryID: Int]           // counts per source/category (shown to the user)
+    // NOTE: no per-risk-tier breakdown is surfaced in v0.6 (risk tiers removed, § 4.2).
 }
 
 struct SkippedPath: Sendable, Codable, Hashable {
@@ -425,16 +449,19 @@ struct PlannedAction: Sendable, Codable, Hashable, Identifiable {
 }
 
 enum ConfirmationState: String, Codable, Sendable {
-    case preselected            // 🟢 default-selected, plain confirm
-    case explicitInteractive    // user selected in TUI
-    case typedConfirmation      // 🔴 required typed "yes"/phrase (Article 4.1)
+    case preselected            // bulk "clean all" (interactive `Y` or `--yes`)
+    case explicitInteractive    // user selected this source via `select each` (`s` → `y`)
+    case typedConfirmation      // escalated confirmation (e.g. --no-stage purge)
     case automationPolicy       // authorized by a signed policy (spec 23)
 }
 ```
 
-Invariant: a `PlannedAction` with `disposition == .purge` or targeting a `.dangerous` Finding
-MUST have `confirmed == .typedConfirmation` or `.automationPolicy`. Enforced by cleanup engine
-(spec 20), never trusted to the caller.
+Consent is **user-driven** (spec 22 § 4): after the preview the flow asks
+`Clean all X? [Y = all · s = select each · n = cancel]`, `--yes` grants blanket consent, and
+`--dry-run` acts on nothing. Every `PlannedAction` records how consent was obtained in `confirmed`;
+the cleanup engine refuses to execute an action with unrecorded consent (spec 20). A
+`disposition == .purge` still requires explicit escalation (`--no-stage` + consent, spec 22 § 5.3),
+never a default.
 
 ### 4.14 `CleanReport`
 
@@ -510,7 +537,6 @@ struct Profile: Sendable, Codable, Hashable, Identifiable {
     var id: ProfileID
     var displayName: String
     var enabledPlugins: Set<PluginID>
-    var includeRiskLevels: Set<RiskLevel>         // e.g. [.safe, .medium]
     var defaultDisposition: Disposition           // usually .stage
     var pluginOptions: [PluginID: PluginOptionMap] // opaque per-plugin option bags
     var extraTargets: [FilePath]                   // user blacklist/target rules (Article 3)
@@ -536,11 +562,11 @@ respectively and referenced here by name.
 
 | # | Invariant | Enforced in |
 |---|---|---|
-| DM-1 | `Recoverability.none` ⇒ `RiskLevel.dangerous`. | Finding init / safety scorer (spec 22) |
-| DM-2 | Plugin may lower but never raise `SafetyScore` above the shared scorer ceiling. | Scan engine (spec 17) |
-| DM-3 | `Finding.risk` matches `safetyScore.riskLevel`, unless a stricter (higher) level w/ evidence. | Safety model (spec 22) |
-| DM-4 | Protected findings (`isProtected`) produce no `PlannedAction`. | Rule/cleanup engine (18/20) |
-| DM-5 | `.purge` or `.dangerous` action ⇒ `confirmed ∈ {typedConfirmation, automationPolicy}`. | Cleanup engine (spec 20) |
+| DM-1 | *(Retired — risk tiers removed.)* `Recoverability`/`RiskLevel`/`SafetyScore` are vestigial and gate nothing (§ 4.2/§ 4.3, spec 22 § 10). | n/a |
+| DM-2 | *(Retired — risk tiers removed.)* No scorer ceiling gates cleaning; the `SafetyScorer` is not invoked. | n/a |
+| DM-3 | *(Retired — risk tiers removed.)* `Finding.risk` is inert metadata, not consistency-checked against a score. | n/a |
+| DM-4 | Protected findings (`isProtected`) produce no `PlannedAction`; the `ProtectedPathGuard` is the sole hard gate. | Cleanup engine / guard (20, spec 22 § 6) |
+| DM-5 | `.purge` action ⇒ `confirmed ∈ {typedConfirmation, automationPolicy}` via explicit escalation; never a default. | Cleanup engine (spec 20) |
 | DM-6 | All `Item.paths` on one `VolumeID`; cross-volume groups are split. | Scan engine (spec 17) |
 | DM-7 | `FindingID` deterministic for the same logical item across scans. | Detection (spec 19) |
 | DM-8 | Reclaim is computed from `allocatedSize` with shared-block exclusion, never raw `size`. | § 6, spec 16/20 |
@@ -620,6 +646,7 @@ way that would materialize them (spec 16 forbids triggering downloads). Local sn
 16-filesystem-strategy (populates `Evidence`, `Item` sizes, `VolumeID`), 17-scan-engine
 (produces `ScanResult`/`Finding`, enforces DM-2/6/7), 18-rule-engine (`isProtected`, targets),
 19-detection-algorithms (`FindingID` derivation), 20-cleanup-engine (executes `CleanPlan`,
-enforces DM-5/8/9), 21-rollback-design (`StagedRef`, staging), 22-safety-model
-(`SafetyScore` computation, DM-1/3), 24-config (`Profile`, `ConfigDigest`), 25-tui
-(`Category` grouping, `RiskLevel.icon`), 28-logging (audit of `ActionOutcome`).
+enforces DM-4/5/8/9), 21-rollback-design (`StagedRef`, staging, `undo`), 22-safety-model
+(the three guarantees; `RiskLevel`/`SafetyScore` retained as vestigial metadata), 24-config
+(`Profile`, `ConfigDigest`), 25-tui (`Category` grouping; no risk colouring), 28-logging
+(audit of `ActionOutcome`).

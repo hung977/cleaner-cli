@@ -112,8 +112,8 @@
 | NFR | Priority | Target | Verification |
 |---|---|---|---|
 | **NFR-070** | MUST | **Plain-output mode:** every TUI screen has a non-TTY / `--no-tui` equivalent that is fully linear, screen-reader-friendly text (no reliance on cursor positioning or color to convey meaning). | test `T-plain-output` |
-| **NFR-071** | MUST | **`NO_COLOR`** env var and `--no-color` MUST fully disable color/SGR; all information conveyed by color MUST also be conveyed by text/symbol (risk shown as word + icon, not color alone). | test `T-no-color` |
-| **NFR-072** | MUST | **Color-blind-safe themes:** ship at least one deuteranopia/protanopia-safe theme and never rely on red/green alone to distinguish risk (icons 🟢🟡🔴 + labels Safe/Medium/Dangerous). | review + snapshot `T-theme-cvd` |
+| **NFR-071** | MUST | **`NO_COLOR`** env var and `--no-color` MUST fully disable color/SGR; all information conveyed by color MUST also be conveyed by text/symbol (status conveyed as word/label, not color alone). | test `T-no-color` |
+| **NFR-072** | MUST | **Color-blind-safe themes:** ship at least one deuteranopia/protanopia-safe theme and never rely on red/green alone to convey meaning (any emphasis is also carried by text/labels). | review + snapshot `T-theme-cvd` |
 | **NFR-073** | SHOULD | Screen-reader compatibility validated with VoiceOver on the plain-output path; interactive prompts are answerable without visual context. | manual a11y checklist (spec 25) |
 | **NFR-074** | SHOULD | All interactive actions are reachable by keyboard only; no mouse requirement. Key bindings documented and discoverable (`?` help). | test `T-keyboard-only` |
 | **NFR-075** | SHOULD | Respect `prefers-reduced-motion` semantics: a `--no-animation`/config option disables spinners/animated bars in favor of discrete percentage updates. | test `T-reduced-motion` |
@@ -158,7 +158,7 @@
 | NFR | Priority | Target | Verification |
 |---|---|---|---|
 | **NFR-110** | MUST | Every run is reconstructable from logs (principle 8): structured `swift-log` output (spec 28) + append-only NDJSON **audit trail** of every mutation (path, size, disposition, session UUID, evidence). | test `T-audit-completeness` |
-| **NFR-111** | MUST | A machine-readable session **report** (`--json`, `schemaVersion`) is produced for every run and persisted under `~/.cleaner/reports` for later `report` (FR-073). | test `T-report-persist` |
+| **NFR-111** | MUST | A machine-readable session **report** (`--json`, `schemaVersion`) is produced for every run and persisted under `~/.cleaner/reports` for later inspection (`cleaner undo --list`, FR-073). | test `T-report-persist` |
 | **NFR-112** | SHOULD | `--debug` emits timing/decision traces (per-phase durations, per-plugin counts, adapter calls) to **stderr** without polluting `--json` **stdout** (stdout/stderr contract, spec 08). | test `T-debug-stream-separation` |
 | **NFR-113** | SHOULD | Log volume is bounded: audit/logs rotate (size+age) under `~/.cleaner/logs` and never grow unboundedly (spec 28). | test `T-log-rotation` |
 | **NFR-114** | MAY | Optional `swift-metrics` counters (scan rate, reclaim bytes, durations) exposed when telemetry opted in, no-op backend otherwise (spec 10 §8). | test `T-metrics-noop` |

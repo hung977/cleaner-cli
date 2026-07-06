@@ -221,9 +221,9 @@ copies are actually clones, reclaim ≈ 0 and they are *not* offered as dupes.
 - Clone/hardlink exclusion (Stage 1) is mandatory — the headline correctness guarantee.
 - SHA-256 confirmation (Stage 4) before any deletion; hashing runs on `< 5 %` of bytes in the
   common case (NFR-004) because size+prefilter eliminate most files.
-- Never auto-select a keeper in `--yes` for duplicates that live under user-content roots
-  (those are protected anyway) — duplicates are `medium` by default (deleting a "copy" can
-  surprise a user who organized them deliberately).
+- Never auto-select a keeper for duplicates that live under user-content roots
+  (those are protected anyway) — deleting a "copy" can
+  surprise a user who organized them deliberately.
 - Dataless files excluded (never hashed — would trigger download, spec 16 §4.4).
 
 **Risk & recoverability.** `medium` by default (user may want both copies); `instant` (staged).
@@ -275,8 +275,8 @@ informational + user decision.
 3. Emit top-N as `large-files` findings, annotated with kind and origin.
 
 **False-positive mitigations.**
-- Never pre-select for deletion (Art. 4.1: user content, `dangerous`/`medium`, requires explicit
-  choice). Disk images, VMs, media are surfaced, not recommended.
+- Surfaced for review only, never auto-cleaned (`cleaner find large` is informational; user content
+  requires an explicit choice). Disk images, VMs, media are surfaced, not recommended.
 - Report on-disk (allocated) size so sparse/clone giants aren't overstated (spec 14 §6).
 
 **Risk & recoverability.** `medium`/`dangerous` (likely user data); disposition user-chosen;
@@ -298,7 +298,7 @@ size threshold (only surface old files above a size floor to avoid noise).
 
 **False-positive mitigations.**
 - Unknown recency → excluded (Principle 1).
-- Old ≠ unwanted: default `medium`, never pre-selected. `atime`-only age capped at `medium`.
+- Old ≠ unwanted: default `medium`, surfaced for review not auto-cleaned. `atime`-only age capped at `medium`.
 
 **Risk & recoverability.** `medium`, user-chosen disposition, `manual`/`hard` (may be unique).
 
@@ -351,12 +351,12 @@ bundle size (`allocatedSize`), whether it is a system/critical app (excluded).
 - Running-process check (spec 16 §8, `NSWorkspace` optional / process scan) — never flag a running
   app.
 - System/Apple apps and apps under `/Applications` core set excluded (Art. 5).
-- Long idle threshold + `dangerous` risk + typed confirmation (Art. 4.1) — this removes user data.
+- Long idle threshold — this removes user data, so the whole set is staged and recoverable via `cleaner undo`.
 - Present the full removal set (bundle + Application Support + caches + prefs + LaunchAgents) so
   the user sees everything, and stage all (reversible).
 
 **Risk & recoverability.** `dangerous` (it's an app the user installed), `manual` (re-install),
-default `stage`, typed confirmation required.
+default `stage`, recoverable via `cleaner undo`.
 
 **Complexity.** O(#apps) — small; one Launch Services + one running-check per app.
 
@@ -466,15 +466,15 @@ state), age threshold, whether an App Store/notarization record suggests it ship
 **Algorithm.**
 1. Identify `.xcarchive` bundles under the Archives anchor.
 2. Age + version metadata → old archives beyond keep-N.
-3. Present grouped by app; **never** pre-select.
+3. Present grouped by app for user review; surfaced, not auto-cleaned.
 
 **False-positive mitigations.**
 - `dangerous` by construction (Art. 4.1): an archive may be the only copy of a shipped build's
   dSYMs for symbolication — irreplaceable.
-- Typed confirmation, never `--yes` auto-clean (Art. 4.1), always `stage` (never purge default).
+- Always `stage` (never purge default); staged and recoverable via `cleaner undo`.
 
 **Risk & recoverability.** `dangerous`, `hard`/`none` (dSYMs may be irreplaceable → `none` forces
-dangerous, DM-1), default `stage`, typed confirmation.
+dangerous, DM-1), default `stage`, recoverable via `cleaner undo`.
 
 **Complexity.** O(#archives) + one plist read each.
 
@@ -574,8 +574,9 @@ size, not its logical size.
 | Unnecessary lproj (18) | medium | manual | −signed bundle | no |
 | Zombie dir (19) | safe/medium | manual/hard | +empty/dead-agent, orphan-support→medium | safe: yes |
 
-Consistent with Art. 4.1: `safe` pre-selected & auto in `--yes`; `medium` shown not pre-selected;
-`dangerous` never auto, typed confirmation. The engine's scorer (spec 22) may lower any of these.
+In v0.6 all findings are surfaced together; the default run confirms via the `[Y · s · n]` prompt,
+`--yes` cleans everything, and every removal is staged and recoverable via `cleaner undo`. The
+classifications above are retained as internal metadata only.
 
 ## Open Questions
 

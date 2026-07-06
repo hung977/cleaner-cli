@@ -9,6 +9,13 @@
 > platform. It is the **single source of truth for what is v1 vs. deferred**. Constitution
 > Article 2 draws the v1.0 scope boundary; this document owns everything on the far side of it
 > and the ordering that gets us there. Nothing here may leak a requirement back into v1 (Article 2).
+>
+> **As-built note (v0.6):** this is a historical roadmap. The tool shipped *without* risk grading —
+> no 🟢🟡🔴 icons, no Safe/Medium/Dangerous tiers, and no risk-based selection or typed-confirm
+> gates. The user command surface is `cleaner` (scan + clean, with `--yes`/`--dry-run`/`--json`/`--md`),
+> `cleaner undo` (everything is staged and recoverable), and `cleaner find` — the `analyze`/`clean`/
+> `optimize`/`report`/`staging` commands and risk icons described below reflect the *originally-planned*
+> milestones, not what shipped.
 
 ---
 
@@ -86,7 +93,7 @@ FR-073, FR-075, FR-082–084, FR-087–089, FR-099, FR-110–112. Specs 10–17,
    the deny-list / follow an escaping symlink is aborted with exit `8` (FR-110).
 4. **Idempotence:** `clean` run twice finds nothing new the second time (FR-112).
 5. **Contract:** `--json` output validates against the v1 schema; exit codes match Article 7;
-   `cleaner analyze --json | jq` is byte-clean (no chrome on stdout).
+   `cleaner --json | jq` is byte-clean (no chrome on stdout).
 
 **Deliberately excluded from MVP (and why).** Full TUI (breadth of plugins matters more first);
 🟡/🔴 plugins (prove the spine on 🟢 only); docker/xcrun/brew shell-out adapters (native-only
@@ -214,7 +221,7 @@ behind extra safety, privacy, or trust machinery. Sequenced so that the *plugin 
 ### 6.2 Scheduling & automation — launchd agent (v2.1)
 - A `LaunchAgent` that runs curated `optimize`/`clean` passes on a schedule, governed strictly by
   a **signed automation policy** (spec 23) — the only non-interactive path allowed to dispose
-  without a live human, and it still stages by default (principle 2). Never auto-cleans 🔴.
+  without a live human, and it still stages by default (principle 2). Never disposes anything outside the signed policy's explicit allow-list, and protected paths stay hard-blocked.
   Depends on v1 staging + policy being rock-solid.
 
 ### 6.3 Self-update (v2.1)

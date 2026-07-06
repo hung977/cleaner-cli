@@ -178,7 +178,7 @@ run privileged filesystem mutation.
     clear rationale and, where useful, a **manual command the user can run themselves** (e.g. the
     exact `sudo rm -rf <path>` they *could* run, shown but never executed by us).
   - The finding's risk is computed normally; being admin-owned raises caution (it lowers
-    `s_uac`/path-confidence context), so such items skew 🟡/🔴 and are never auto-selected.
+    `s_uac`/path-confidence context). Being admin-owned, such items are report-only in v1 anyway (SR-115).
 - **SR-116** This keeps v1 firmly least-privilege and safe: the tool that runs as *you* can only
   delete what *you* can delete. Elevation is a v2 feature gated on the privileged-helper design
   (SR-114) passing a dedicated security review (spec 35) and threat model update (spec 36).
@@ -191,7 +191,7 @@ run privileged filesystem mutation.
   a *specific* admin-owned path crosses to the helper.
 - **SR-118** Elevation MUST be **explicit and consented**: the user is shown exactly which paths
   require admin and must approve the elevation (Authorization Services prompt via the helper's
-  installation, plus the tool's own typed confirmation for any 🔴 among them, spec 22 § 8.4). No
+  installation, plus the tool's own confirmation prompt for the affected paths, spec 22 § 8.4). No
   silent escalation (Principle 6).
 - **SR-119** The privileged boundary is a **trust boundary** (spec 36): the helper re-derives
   safety independently and rejects anything the unprivileged side "already approved" that fails the
@@ -230,7 +230,7 @@ safety model applies; admin-owned paths are report-only (SR-115).
   - The protected-path deny-list and every § 6 invariant of spec 22 are enforced **identically**
     and **cannot** be relaxed by being root — running as root does not unlock the deny-list
     (Constitution Article 5; spec 22 SR-042).
-  - 🔴 typed confirmation is still required; `--yes` still cannot auto-clean 🔴 (spec 22 SR-045).
+  - The confirmation prompt and deny-list still apply; `--yes` does not relax the deny-list, and every removal remains staged and recoverable via `cleaner undo`.
 - **SR-122** The tool **discourages** `sudo cleaner` in docs and first-run guidance: it is broader
   than necessary (violates least-privilege), muddies file ownership of the tool's own
   `~/.cleaner/` state (root-owned config/staging can then break unprivileged runs), and is
@@ -244,7 +244,7 @@ safety model applies; admin-owned paths are report-only (SR-115).
 
 ### 8.4 `sudo` behavior summary
 
-| Invocation | uid | Admin-owned paths | Deny-list | 🔴 confirm | `~/.cleaner` home |
+| Invocation | uid | Admin-owned paths | Deny-list | Confirm prompt | `~/.cleaner` home |
 |---|---|---|---|---|---|
 | `cleaner` (user) | user | report-only (SR-115) | enforced | required | user home |
 | `sudo cleaner` (discouraged) | 0 | still report-only in v1 (SR-115) | **enforced, unrelaxed** (SR-121) | required | invoking user's home (SR-123) |
@@ -305,7 +305,7 @@ is spec 32.
 - **SR-130** Every permission-related refusal exits with the correct code: unmet required access on
   a requested action → **4** (`permission`); a safety-invariant abort (attempted protected/system
   path even under root) → **8** (`safety`); environment precondition unmet (e.g. required TTY for a
-  🔴 typed confirmation absent) → **10** (`precondition`) or **3** (`partial`) per spec 22 SR-051.
+  confirmation prompt absent) → **10** (`precondition`) or **3** (`partial`) per spec 22 SR-051.
 
 ## Open Questions
 

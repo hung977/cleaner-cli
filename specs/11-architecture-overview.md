@@ -174,7 +174,7 @@ sequenceDiagram
     participant RP as ReportBuilder
     participant AU as AuditSink
 
-    U->>CLI: cleaner clean --include medium
+    U->>CLI: cleaner
     CLI->>CLI: parse args (ArgumentParser) → RunRequest
     CLI->>RC: run(RunRequest, presenter)
     RC->>Cfg: load(config.yml, profile, env)
@@ -193,11 +193,11 @@ sequenceDiagram
         PG-->>SE: accepted | rejected(safety)
         SE-->>RC: RunEvent.found(Finding')  (AsyncStream)
     end
-    RC-->>CLI: preview (grouped, sized, risk-colored)
+    RC-->>CLI: preview (grouped, sized)
     CLI-->>U: render preview + reclaim estimate
 
-    Note over U,CLI: CONFIRM gate (skipped by --yes policy; forced typed-confirm for 🔴)
-    U->>CLI: confirm selection (y / typed / q)
+    Note over U,CLI: CONFIRM gate ([Y·s·n] prompt; skipped by --yes)
+    U->>CLI: confirm (Y = all / s = select each / n = cancel)
     CLI->>RC: proceed(selectedItems) | cancel(exit 5)
 
     Note over RC,ST: CLEANUP phase — mutation, staged by default
@@ -232,8 +232,8 @@ Phase boundaries and their guarantees:
    guards *every* Finding. Read-only invariant: the ScanEngine holds no mutating provider.
 5. **build findings / preview** → grouped, de-duplicated, sized with the *shared* reclaim
    measurement (CC-10). This same estimate is what a dry-run reports.
-6. **confirm** → interactive selection, or `--yes` policy (auto-select 🟢, honor
-   `--include`, never 🔴), or non-TTY refusal.
+6. **confirm** → interactive `[Y·s·n]` selection, or `--yes` policy (clean all,
+   no prompt), or non-TTY refusal.
 7. **cleanup (stage)** → `CleanupEngine` re-validates each Item against the guard (TOCTOU),
    moves to staging via `StagingManager` (an actor), measures actual freed allocation.
 8. **report** → `SessionReport` assembled from the same event stream shown live.
@@ -323,7 +323,7 @@ code paths, which is what keeps dry-run numbers honest (principle 3).
         ┌────────────────────┴─────────────────────┐
         │ ConfirmationPolicy (injected)             │
         │  interactive → prompt; assumeYes → auto   │
-        │  select 🟢 (+ --include);  json → same as  │
+        │  clean all, no prompt;   json → same as   │
         │  assumeYes but machine input; dryRun → all │
         │  selected but Disposition forced to .noop  │
         └────────────────────┬─────────────────────┘
@@ -340,8 +340,8 @@ code paths, which is what keeps dry-run numbers honest (principle 3).
   computes the exact same reclaim (CC-10) and writes the same audit events tagged
   `dryRun:true`, but performs no move. The report is byte-for-byte comparable to a real run's
   *plan*.
-- **`--yes`** replaces the interactive `ConfirmationPolicy` with an auto-policy: auto-select
-  🟢, include 🟡 only if `--include medium`, **never** 🔴 (Article 4.1). Still runs the full
+- **`--yes`** replaces the interactive `ConfirmationPolicy` with an auto-policy: it
+  cleans everything found without prompting (Article 4.1). Still runs the full
   guard.
 - **`--json`** attaches `JSONEmitter` as the `Presenter` and defaults confirmation to the
   `--yes` policy (machine use has no TTY). Findings and the final report serialize via the

@@ -58,7 +58,7 @@ evidence. The plugin still gathers metadata so the preview is honest and the eng
    Trash" grouping is a presentation concern (spec 25), not a separate Item.
 
 Emptiness is honest: if a Trash root has no entries, the plugin yields nothing (idempotent —
-running `clean` twice finds nothing, Principle 5).
+running `cleaner` twice finds nothing, Principle 5).
 
 ## 4. Roots / paths with justification
 
@@ -83,8 +83,7 @@ Questions). The engine still intersects with allow-space and refuses mount roots
   swept silently under `--yes`.
 - Because `Recoverability == .none` for the *tool* (Trash is the last buffer), DM-1 would force
   🔴 — but Trash is the documented exception (Art. 3 glossary: Trash *is* the recovery buffer), so
-  the plugin proposes 🟡 with `recoverability = .none` and relies on the engine's typed-confirm
-  gate for `--yes` (medium is skipped under `--yes` unless `--include medium`, Art. 4.1).
+  the plugin proposes 🟡 with `recoverability = .none`.
 
 ## 6. Recoverability & staging
 

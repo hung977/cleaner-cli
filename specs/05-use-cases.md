@@ -13,9 +13,15 @@ postconditions. Where stories say *what* the user wants, use cases fix *how the 
 unfolds*, including error and edge behaviour. Each UC MUST trace to ≥ 1 user story and is a
 row in the traceability matrix (spec 06). RFC-2119 keywords are normative.
 
-Conventions: exit codes per Constitution Article 7; risk levels 🟢/🟡/🔴 per Article 4;
-staging/rollback/purge/disposition per the glossary (Article 3); protected paths per Article 5.
+Conventions: exit codes per Constitution Article 7; staging/rollback/purge/disposition per the
+glossary (Article 3); protected paths per Article 5. Risk levels (🟢/🟡/🔴, Article 4) are
+**vestigial internal metadata** in v0.6 — they no longer govern selection, gating, or display.
 "The engine" = the safety-enforcing core; "a plugin" = a category cleaner (spec 13).
+
+> **v0.6 note.** `cleaner` is a line-based CLI with no risk tiers (no 🟢🟡🔴 / Safe·Medium·Dangerous).
+> Selection is `Clean all / select each (y/N) / cancel` (or `--yes`), and safety comes from staging +
+> `cleaner undo` + the protected-path guard, not risk grading. The use cases below are reconciled to
+> what shipped; retained risk vocabulary is vestigial internal metadata only.
 
 ### 1.1 Use-case index
 
@@ -43,28 +49,30 @@ staging/rollback/purge/disposition per the glossary (Article 3); protected paths
 
 - **Primary actor:** Mai (P1). **Goal:** reclaim safe junk with per-item control.
 - **Preconditions:** Interactive TTY; Full Disk Access granted (else UC-008); tool home exists.
-- **Trigger:** `cleaner clean`.
+- **Trigger:** `cleaner`.
 
 **Main flow**
 1. The engine loads config and enabled plugins; validates config (fail → E1).
-2. The engine runs a read-only Scan across plugin roots, streaming progress to the TUI.
-3. The tool renders findings as a tree grouped by category, each Item showing size, risk badge
-   (🟢/🟡/🔴), and one-line evidence.
-4. The engine pre-selects all 🟢 items; leaves 🟡 shown-but-unselected; shows 🔴 unselected.
-5. Mai expands a category (US-003), reviews items, uses "select all safe" (US-011) and
-   deselects a named simulator she wants to keep (US-012).
-6. Mai confirms. The tool shows a final preview: item count, total reclaim, dispositions.
+2. The engine runs a read-only Scan across plugin roots, streaming line-based progress.
+3. The tool prints a summary grouped by source, each group showing reclaimable size and a
+   one-line evidence/description.
+4. The tool prompts `Clean all X? [Y = all · s = select each · n = cancel]`. `Y` selects
+   everything found; `s` walks each source with a `y/N` prompt; `n` cancels (exit `0`).
+5. In `select each` mode Mai answers `y`/`N` per source, keeping (for example) a named simulator
+   she wants (US-012); every source is offered — nothing is pre-selected or withheld by risk.
+6. The tool shows a final preview: item count, total reclaim, dispositions.
 7. Mai confirms execution. The engine moves each selected Item to Staging (`stage`
    disposition), one atomically at a time, appending an audit event per mutation.
-8. The tool prints a summary: per-category and total reclaimed bytes, cleaned/skipped counts,
-   and the staging path for rollback. Exit `0`.
+8. The tool prints a summary: per-source and total reclaimed bytes, cleaned/skipped counts,
+   and that `cleaner undo` restores the run. Exit `0`.
 
 **Alternate flows**
-- **A1 (medium included):** Mai also selects 🟡 items; the tool includes them; behaviour
-  otherwise identical.
-- **A2 (dangerous selected):** Mai selects a 🔴 item; before execution the tool requires a
-  typed confirmation for it (US-020); on non-match it is skipped.
-- **A3 (trash routing):** Mai passed `--trash`; step 7 routes to macOS Trash instead of Staging.
+- **A1 (clean all):** Mai answers `Y` at step 4; every found source is staged without the
+  per-source walk; behaviour otherwise identical. Safety is reversibility (staging + `cleaner
+  undo`), not risk filtering.
+- **A2 (deselect in `select each`):** Mai answers `N` to a source she wants to keep; it is left
+  untouched and reported as skipped. (There is no typed-confirmation tier in v0.6; every
+  actioned item is recoverable via `cleaner undo`.)
 
 **Exception flows**
 - **E1 (bad config):** config invalid → abort before scanning, exit `6`.
@@ -86,18 +94,19 @@ staging/rollback/purge/disposition per the glossary (Article 3); protected paths
 
 - **Primary actor:** Diego (P2). **Goal:** fast safe sweep, no prompts.
 - **Preconditions:** Full Disk Access granted; may be TTY or not.
-- **Trigger:** `cleaner clean --yes` (optionally `--include medium`, `--only <cat>`).
+- **Trigger:** `cleaner --yes` (optionally `--include <cat>` / `--profile <name>` to scope).
 
 **Main flow**
 1. Engine loads config/plugins, scans.
-2. Engine auto-selects **only** 🟢 items (🟡 only if `--include medium`; 🔴 never — Article 4.1).
+2. Engine selects **everything found** in scope — there is no risk filter; reversibility
+   (staging + `cleaner undo`) is the safety net (protected paths remain excluded, Article 5).
 3. Without prompting, engine stages selected items, writing audit events.
 4. Tool prints a concise summary; exit `0`.
 
 **Alternate flows**
-- **A1 (nothing to do / idempotent re-run):** no 🟢 items found → report 0 bytes, exit `0`
+- **A1 (nothing to do / idempotent re-run):** nothing found → report 0 bytes, exit `0`
   (US-013).
-- **A2 (scoped):** `--only docker` limits scope to one plugin.
+- **A2 (scoped):** `--include docker` / `--profile <name>` limits scope.
 
 **Exception flows**
 - **E1 (missing permission):** Full Disk Access not granted → no destructive action, print
@@ -105,8 +114,8 @@ staging/rollback/purge/disposition per the glossary (Article 3); protected paths
 - **E2 (partial):** some items fail → exit `3`, failures listed.
 - **E3 (protected path):** engine invariant refuses → exit `8`.
 
-**Postconditions:** only 🟢 (and opted 🟡) non-protected items staged; deterministic exit code;
-never blocked on input.
+**Postconditions:** all in-scope non-protected items staged (recoverable via `cleaner undo`);
+deterministic exit code; never blocked on input.
 
 ---
 
@@ -114,14 +123,14 @@ never blocked on input.
 
 - **Primary actor:** Rosa (P5). **Goal:** see exactly what *would* happen, mutate nothing.
 - **Preconditions:** none beyond read access; permission gaps are reported, not fatal.
-- **Trigger:** `cleaner clean --dry-run` (optionally `--json`).
+- **Trigger:** `cleaner --dry-run` (optionally `--json`).
 
 **Main flow**
 1. Engine scans read-only.
 2. Engine computes dispositions for every candidate Item exactly as a real run would, using the
    same measurement code (principle 3).
-3. Tool lists each Item with path, risk, disposition (`stage`/`trash`/`skip`), and reclaim
-   size; prints a reclaim total.
+3. Tool lists each Item with path, disposition (`stage`/`skip`), and reclaim size; prints a
+   reclaim total.
 4. Engine performs **no** filesystem mutation and writes **no** audit deletion events; exit `0`.
 
 **Alternate flows**
@@ -142,17 +151,17 @@ would achieve for the same selection (US-009; KPI K5).
 
 - **Primary actor:** Diego (P2). **Goal:** understand disk usage before deciding.
 - **Preconditions:** read access to roots.
-- **Trigger:** `cleaner analyze` (optionally `--only`, `--json`).
+- **Trigger:** `cleaner --dry-run` (optionally `--include <cat>`, `--json`).
 
 **Main flow**
 1. Engine scans read-only, streaming progress (US-005).
-2. Tool presents categories with reclaimable size, sorted descending, expandable to items
-   (US-003), each with risk and evidence.
-3. Exit `0`. No mutation, no staging.
+2. Tool presents sources grouped with reclaimable size, sorted descending, each with a one-line
+   evidence/description (US-003).
+3. Exit `0`. No mutation, no staging (dry-run never touches the filesystem).
 
 **Alternate flows**
-- **A1 (scoped):** `--only xcode,docker` restricts plugins.
-- **A2 (JSON):** `--json` emits the analysis schema; no TUI on stdout.
+- **A1 (scoped):** `--include xcode,docker` restricts plugins.
+- **A2 (JSON):** `--json` emits the analysis schema; no decorative output on stdout.
 
 **Exception flows**
 - **E1 (unknown category):** exit `2`. **E2 (permission gap):** categories needing access not
@@ -189,12 +198,12 @@ would achieve for the same selection (US-009; KPI K5).
 
 - **Primary actor:** Priya (P3). **Goal:** feed run results into dashboards/archive.
 - **Preconditions:** a run occurred (or is run now with `--json`).
-- **Trigger:** `cleaner report --json [--last | --session <uuid>]` or `cleaner clean --yes --json`.
+- **Trigger:** `cleaner report --json [--last | --session <uuid>]` or `cleaner --yes --json`.
 
 **Main flow**
 1. Tool loads (or produces) the session record.
 2. Tool emits a documented, stable JSON schema to stdout: session UUID, per-item paths/sizes/
-   risk/disposition/result, per-category and total reclaim, timings, exit status (US-035).
+   disposition/result, per-source and total reclaim, timings, exit status (US-035).
 3. Decorative TUI is suppressed on stdout; exit reflects the run (`0`/`3`/…).
 
 **Alternate flows**
@@ -243,7 +252,7 @@ the rollback; staging entries for restored items are cleared.
 - **Primary actor:** Mai (P1). **Goal:** grant the access the tool needs, understanding why.
 - **Preconditions:** first run (or FDA not yet granted); many dev-junk paths under
   `~/Library` require Full Disk Access to enumerate reliably.
-- **Trigger:** any command needing access it lacks (e.g. `cleaner analyze`).
+- **Trigger:** any command needing access it lacks (e.g. `cleaner --dry-run`).
 
 **Main flow**
 1. Engine detects it cannot fully read required roots (permission probe).
@@ -281,8 +290,8 @@ nothing was escalated silently; the decision is logged.
 2. Engine intersects plugin roots with the allow-space, subtracts protected paths (Article 5),
    then applies the user **whitelist/ignore** (removes matches) and **target rules** (adds
    matches within allow-space only) (US-029, US-030).
-3. Scan produces findings excluding ignored paths; user-added targets appear with a
-   conservative default risk (never 🟢 without evidence).
+3. Scan produces findings excluding ignored paths; user-added targets appear as ordinary
+   findings (conservatively scoped to the allow-space; still recoverable via `cleaner undo`).
 4. Clean proceeds as UC-001/UC-002 over the filtered set.
 
 **Alternate flows**
@@ -305,8 +314,8 @@ within allow-space; behaviour reproducible across machines with the same config 
 
 - **Primary actor:** Sam (P4). **Goal:** reclaim space from exact-duplicate files, keeping one.
 - **Preconditions:** duplicate-finder plugin enabled; read access to scanned roots.
-- **Trigger:** `cleaner analyze --only duplicates` then `cleaner clean --only duplicates` (or a
-  combined interactive flow).
+- **Trigger:** `cleaner find dupes` (which scans, presents sets, then offers to stage surplus
+  copies in the same line-based flow).
 
 **Main flow**
 1. Plugin enumerates candidate files, prefilters by size (and a fast rolling/`xxHash`), then
@@ -338,16 +347,16 @@ staged; determinism on re-run.
 
 - **Primary actor:** Sam (P4). **Goal:** surface big/stale files the category plugins don't own.
 - **Preconditions:** large/old-file plugin enabled with size and age thresholds (config/flags).
-- **Trigger:** `cleaner analyze --only large-old` (optionally `--min-size`, `--older-than`).
+- **Trigger:** `cleaner find large` (optionally `--min-size`, `--older-than`).
 
 **Main flow**
 1. Plugin enumerates within allow-space, collecting files above the size threshold and/or with
    last-access older than the age threshold.
 2. For each, it records size, last-access date, and Spotlight kind as evidence (US-019).
-3. Files under user-content roots are classified 🔴 (or excluded per Article 5); none are
-   pre-selected.
+3. Files under user-content roots are conservatively excluded / not offered (protected roots are
+   never actionable, Article 5); nothing is pre-selected.
 4. Tool lists results sorted by size/age; Sam explicitly selects any to clean; selected items
-   follow the standard preview→confirm→stage path.
+   follow the standard preview→confirm→stage path (recoverable via `cleaner undo`).
 
 **Alternate flows**
 - **A1 (report-only):** Sam only analyzes and exports (UC-015), deleting nothing.
@@ -358,7 +367,7 @@ staged; determinism on re-run.
 - **E2 (in-use):** an open large file is marked and not auto-actionable (US-021).
 
 **Postconditions:** no large/old file is ever cleaned without explicit selection; user-content
-never staged without a typed 🔴 confirmation (US-020).
+roots are not offered for staging; every staged item is recoverable via `cleaner undo`.
 
 ---
 
@@ -366,13 +375,14 @@ never staged without a typed 🔴 confirmation (US-020).
 
 - **Primary actor:** Priya (P3). **Goal:** run cleanup in CI within a bounded, signed mandate.
 - **Preconditions:** a signed automation policy at `~/.cleaner/policy/` (spec 23); non-TTY CI.
-- **Trigger:** `cleaner clean --yes --policy <name>` (with `--timeout`, `--json`).
+- **Trigger:** `cleaner --yes --policy <name>` (with `--timeout`, `--json`).
 
 **Main flow**
 1. Engine loads and verifies the policy signature (invalid/unsigned → E1).
-2. Engine scopes the run to the policy's allowed categories/paths and risk ceiling (e.g. 🟢
-   only), refusing anything outside it.
-3. Engine scans (respecting `--timeout`) and stages in-scope 🟢 items without prompting.
+2. Engine scopes the run to the policy's allowed categories/paths (via config profiles),
+   refusing anything outside it — scope is category/path, not a risk ceiling.
+3. Engine scans (respecting `--timeout`) and stages in-scope items without prompting (each
+   recoverable via `cleaner undo`).
 4. Engine records the policy identity in the audit trail (principle 8); emits JSON (UC-006);
    exit `0`/`3`.
 
