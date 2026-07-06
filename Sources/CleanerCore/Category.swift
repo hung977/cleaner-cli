@@ -20,4 +20,10 @@ public struct FindingCategory: Sendable, Hashable, Codable, Identifiable {
         FindingCategory(id: "large-files", displayName: "Large Files", icon: "📁")
     public static let duplicates =
         FindingCategory(id: "duplicates", displayName: "Duplicate Files", icon: "👯")
+    public static let appCache =
+        FindingCategory(id: "app-cache", displayName: "Application Cache", icon: "💾")
+    public static let logs =
+        FindingCategory(id: "logs", displayName: "Logs & Crash Reports", icon: "📋")
+    public static let browser =
+        FindingCategory(id: "browser", displayName: "Browser Cache", icon: "🌐")
 }

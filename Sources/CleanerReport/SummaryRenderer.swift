@@ -99,9 +99,16 @@ public struct SummaryRenderer: Sendable {
 
         out.append("")
         if scanning == nil {
+            let safe = result.findings.filter { $0.risk == .safe }.map(\.reclaimableSize).total()
+            let extra = result.findings.filter { $0.risk == .medium }.map(\.reclaimableSize).total()
             out.append("  " + s.hex(Palette.muted, "Total  ") + s.hexBold(Palette.textStrong, total)
                        + s.hex(Palette.faint, "   ·   ") + s.hex(Palette.muted, "run ")
                        + s.hexBold(Palette.green, "cleaner") + s.hex(Palette.muted, " to reclaim"))
+            if extra.bytes > 0 {
+                out.append("  " + s.hex(Palette.green, safe.formatted) + s.hex(Palette.muted, " Safe now")
+                           + s.hex(Palette.faint, "  ·  ") + s.hex(Palette.amber, extra.formatted)
+                           + s.hex(Palette.muted, " more with ") + s.hexBold(Palette.amber, "--all"))
+            }
         } else {
             out.append("  " + s.hex(Palette.muted, "discovered so far  ") + s.hexBold(Palette.textStrong, total))
         }
