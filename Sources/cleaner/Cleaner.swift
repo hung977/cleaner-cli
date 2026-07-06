@@ -16,7 +16,7 @@ struct Cleaner: AsyncParsableCommand {
         Run `cleaner` to scan and interactively clean. Nothing is deleted without your \
         confirmation, and everything is recoverable with `cleaner undo`.
         """,
-        version: "0.1.0-dev",
+        version: "0.5.0",
         subcommands: [Undo.self, Find.self, Docker.self, Brew.self, Doctor.self, ProfileCmd.self])
 
     @OptionGroup var options: GlobalOptions
