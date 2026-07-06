@@ -5,6 +5,7 @@ import CleanerPluginAPI
 import CleanerEngine
 import CleanerPlugins
 import CleanerReport
+import CleanerConfig
 
 /// The composition root: wires the real services together for a CLI run (specs/11 §DI).
 /// Everything below is constructor-injected so the same graph is exercised by tests.
@@ -21,6 +22,8 @@ struct Runtime {
     let scanEngine: ScanEngine
     let cleanupEngine: CleanupEngine
     let renderer: SummaryRenderer
+    let config: CleanerConfiguration
+    let configError: Error?
 
     init(useColor: Bool) {
         let env = ProcessInfo.processInfo.environment
@@ -43,6 +46,18 @@ struct Runtime {
         self.cleanupEngine = CleanupEngine(fs: fs, guard_: guard_, staging: staging,
                                            audit: audit, clock: clock)
         self.renderer = SummaryRenderer(useColor: useColor)
+
+        do { self.config = try ConfigLoader().load(path: toolHome + "/config.yml"); self.configError = nil }
+        catch { self.config = .empty; self.configError = error }
+    }
+
+    /// Drop findings excluded by the user's `ignore`/`whitelist` globs (specs/24).
+    func applyConfig(_ result: ScanResult) -> ScanResult {
+        var r = result
+        r.findings = result.findings.filter { f in
+            !f.item.allPaths.contains { config.excludes($0) }
+        }
+        return r
     }
 
     func context() -> PluginContext {

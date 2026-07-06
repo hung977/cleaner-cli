@@ -61,8 +61,9 @@ struct Analyze: AsyncParsableCommand {
 
     func run() async throws {
         let rt = Runtime(useColor: options.useColor)
+        if let e = rt.configError { printErr("\(e)"); throw ExitCode(CleanerExitCode.config.rawValue) }
         let plugins = selectPlugins(rt.registry, include: options.include, exclude: options.exclude)
-        let result = await rt.scanEngine.scan(plugins: plugins, context: rt.context())
+        let result = rt.applyConfig(await rt.scanEngine.scan(plugins: plugins, context: rt.context()))
 
         if options.json {
             printOut(try ReportJSON.encode(ReportJSON.analyze(result)))
@@ -92,9 +93,10 @@ struct Clean: AsyncParsableCommand {
 
     func run() async throws {
         let rt = Runtime(useColor: options.useColor)
+        if let e = rt.configError { printErr("\(e)"); throw ExitCode(CleanerExitCode.config.rawValue) }
         let plugins = selectPlugins(rt.registry, include: options.include, exclude: options.exclude)
         let ctx = rt.context()
-        let result = await rt.scanEngine.scan(plugins: plugins, context: ctx)
+        let result = rt.applyConfig(await rt.scanEngine.scan(plugins: plugins, context: ctx))
 
         // Selection: Safe by default; +Medium with --risky; never Dangerous; --yes ⇒ Safe only.
         var selected = result.findings.filter { $0.risk == .safe }
