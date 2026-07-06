@@ -58,7 +58,8 @@ struct Cleaner: AsyncParsableCommand {
         }
 
         // Show the summary (renders reliably — sizes + risk colours), then confirm with y/N.
-        printOut(rt.renderer.analyze(result, elapsed: elapsed, names: rt.pluginNames(), verbose: options.verbose))
+        printOut(rt.renderer.analyze(result, elapsed: elapsed, names: rt.pluginNames(),
+                                     verbose: options.verbose, showAllHint: !all))
 
         let safe = result.findings.filter { $0.risk == .safe }
         let medium = result.findings.filter { $0.risk == .medium }

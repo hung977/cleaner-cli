@@ -31,7 +31,8 @@ public struct SummaryRenderer: Sendable {
 
     public func analyze(_ result: ScanResult, elapsed: String? = nil,
                         scanning: (done: Int, total: Int, frame: Int)? = nil,
-                        names: [PluginID: String] = [:], verbose: Bool = false) -> String {
+                        names: [PluginID: String] = [:], verbose: Bool = false,
+                        showAllHint: Bool = true) -> String {
         var out: [String] = [""]
         let sizeW = max(8, (result.findings.map { $0.reclaimableSize.formatted.count }.max() ?? 8))
 
@@ -104,7 +105,7 @@ public struct SummaryRenderer: Sendable {
             out.append("  " + s.hex(Palette.muted, "Total  ") + s.hexBold(Palette.textStrong, total)
                        + s.hex(Palette.faint, "   ·   ") + s.hex(Palette.muted, "run ")
                        + s.hexBold(Palette.green, "cleaner") + s.hex(Palette.muted, " to reclaim"))
-            if extra.bytes > 0 {
+            if extra.bytes > 0 && showAllHint {
                 out.append("  " + s.hex(Palette.green, safe.formatted) + s.hex(Palette.muted, " Safe now")
                            + s.hex(Palette.faint, "  ·  ") + s.hex(Palette.amber, extra.formatted)
                            + s.hex(Palette.muted, " more with ") + s.hexBold(Palette.amber, "--all"))
