@@ -1,0 +1,29 @@
+# ── Swift / SPM ──────────────────────────────────────────────
+.build/
+.swiftpm/
+Package.resolved.backup
+*.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
+DerivedData/
+
+# ── macOS ────────────────────────────────────────────────────
+.DS_Store
+
+# ── Editor ───────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+
+# ── Open-core boundary (ADR-0014) ────────────────────────────
+# Pro / closed-source code MUST NOT live in this public repo.
+# The Pro app + CleanerLicense live in the private `cleaner-pro` repo.
+# These entries are defense-in-depth: if a Pro tree is ever checked out
+# here by mistake, git will not stage it. (See ADR-0014 pre-push guard.)
+pro/
+/CleanerLicense/
+**/CleanerLicense/
+*.license
+license/token.jws
+
+# ── Local tool state (never commit user runtime data) ────────
+.cleaner/
