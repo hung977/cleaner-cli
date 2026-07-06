@@ -11,11 +11,22 @@ public struct Style: Sendable {
     }
     public func bold(_ s: String) -> String { wrap("1", s) }
     public func dim(_ s: String) -> String { wrap("2", s) }
-    public func green(_ s: String) -> String { wrap("32", s) }
-    public func yellow(_ s: String) -> String { wrap("33", s) }
-    public func red(_ s: String) -> String { wrap("31", s) }
-    public func cyan(_ s: String) -> String { wrap("36", s) }
-    public func gray(_ s: String) -> String { wrap("90", s) }
+    public func green(_ s: String) -> String { hex(0x8AC776, s) }
+    public func yellow(_ s: String) -> String { hex(0xD9A441, s) }
+    public func red(_ s: String) -> String { hex(0xE5595C, s) }
+    public func cyan(_ s: String) -> String { hex(0x7ECEC0, s) }
+    public func gray(_ s: String) -> String { hex(0x7D8B98, s) }
+
+    // MARK: 24-bit truecolor (to match the Claude Design slate/teal/green palette exactly)
+
+    /// Foreground colour from a 0xRRGGBB hex, optionally bold.
+    public func hex(_ rgb: UInt32, _ s: String, bold: Bool = false) -> String {
+        guard enabled else { return s }
+        let r = (rgb >> 16) & 0xFF, g = (rgb >> 8) & 0xFF, b = rgb & 0xFF
+        let lead = bold ? "1;" : ""
+        return "\u{001B}[\(lead)38;2;\(r);\(g);\(b)m\(s)\u{001B}[0m"
+    }
+    public func hexBold(_ rgb: UInt32, _ s: String) -> String { hex(rgb, s, bold: true) }
 
     /// Fixed-width, correctly padded regardless of ANSI (padding measured on the raw string).
     public func padLeft(_ s: String, _ width: Int) -> String {
