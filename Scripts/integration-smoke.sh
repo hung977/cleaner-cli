@@ -51,5 +51,22 @@ assert_exists "$H/Library/Developer/Xcode/DerivedData/MyApp-abc/Build/x.o"
 echo "› protected file still present after full journey"
 assert_exists "$H/Documents/DO-NOT-DELETE.txt"
 
+echo "› doctor --ci is healthy (exit 0)"
+"$BIN" doctor --ci >/dev/null || fail "doctor --ci should exit 0 in a sane sandbox"
+
+echo "› report --md produces a Markdown report"
+"$BIN" report --format md | grep -q "# cleaner — Storage Report" || fail "report --md header"
+
+echo "› config ignore hides matching findings"
+mkfile "$H/Library/Developer/Xcode/DerivedData/Keep-me/z" 500
+printf 'version: 1\nignore:\n  - "*Keep*"\n' > "$H/.cleaner/config.yml"
+"$BIN" analyze | grep -q "Keep-me" && fail "ignored item should be hidden" || true
+
+echo "› invalid config exits 6"
+printf 'version: 99\n' > "$H/.cleaner/config.yml"
+set +e; "$BIN" analyze >/dev/null 2>&1; rc=$?; set -e
+[ "$rc" -eq 6 ] || fail "invalid config should exit 6 (got $rc)"
+rm -f "$H/.cleaner/config.yml"
+
 rm -rf "$(dirname "$H")"
 echo "✓ integration smoke test passed"

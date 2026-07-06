@@ -16,6 +16,15 @@ public struct CleanerConfiguration: Sendable, Codable, Equatable {
         self.whitelist = whitelist
     }
 
+    // All keys optional in YAML (a minimal config need only set what it overrides).
+    enum CodingKeys: String, CodingKey { case version, ignore, whitelist }
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.version = try c.decodeIfPresent(Int.self, forKey: .version) ?? 1
+        self.ignore = try c.decodeIfPresent([String].self, forKey: .ignore) ?? []
+        self.whitelist = try c.decodeIfPresent([String].self, forKey: .whitelist) ?? []
+    }
+
     public static let empty = CleanerConfiguration()
 
     /// True if `path` matches any ignore or whitelist glob (⇒ exclude from findings).

@@ -75,5 +75,6 @@ let package = Package(
             "CleanerPlugins", "CleanerPluginAPI",
         ]),
         .testTarget(name: "CleanerConfigTests", dependencies: ["CleanerConfig"]),
+        .testTarget(name: "CleanerReportTests", dependencies: ["CleanerReport"]),
     ]
 )
