@@ -2,20 +2,32 @@ import Foundation
 import CleanerCore
 import CleanerPlatform
 
+/// Whether a plugin proposes cleanups or only surfaces information (specs/13).
+public enum PluginKind: String, Sendable, Hashable, Codable {
+    /// Proposes items to clean; part of the default scan/clean pipeline.
+    case cleaner
+    /// Read-only insight (large files, duplicates). Findings are informational — they may point
+    /// at user files anywhere, are never auto-cleaned, and run via their own commands, not the
+    /// default `analyze`/`clean` scan.
+    case detector
+}
+
 /// Identity + defaults a plugin advertises (specs/13).
 public struct PluginMetadata: Sendable, Hashable {
     public let id: PluginID
     public let name: String
     public let category: FindingCategory
     public let defaultRisk: RiskLevel
+    public let kind: PluginKind
     public let version: String
 
     public init(id: PluginID, name: String, category: FindingCategory,
-                defaultRisk: RiskLevel, version: String = "0.1.0") {
+                defaultRisk: RiskLevel, kind: PluginKind = .cleaner, version: String = "0.1.0") {
         self.id = id
         self.name = name
         self.category = category
         self.defaultRisk = defaultRisk
+        self.kind = kind
         self.version = version
     }
 }

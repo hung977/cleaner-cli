@@ -119,6 +119,26 @@ public struct SystemFilesystem: FilesystemProviding {
         try fm.removeItem(atPath: path)
     }
 
+    public func enumerateFiles(under root: String,
+                               handler: (String, ByteCount, ByteCount, FileIdentity) -> Void) {
+        guard exists(root) else { return }
+        let url = URL(fileURLWithPath: root)
+        let keys: [URLResourceKey] = [.isRegularFileKey, .isSymbolicLinkKey,
+                                      .totalFileAllocatedSizeKey, .fileAllocatedSizeKey]
+        guard let en = fm.enumerator(at: url, includingPropertiesForKeys: keys,
+                                     options: [], errorHandler: { _, _ in true }) else { return }
+        for case let child as URL in en {
+            guard let rv = try? child.resourceValues(forKeys: Set(keys)) else { continue }
+            if rv.isSymbolicLink == true { continue }
+            guard rv.isRegularFile == true else { continue }
+            let alloc = Int64(rv.totalFileAllocatedSize ?? rv.fileAllocatedSize ?? 0)
+            var st = stat()
+            guard lstat(child.path, &st) == 0 else { continue }
+            handler(child.path, ByteCount(alloc), ByteCount(Int64(st.st_size)),
+                    FileIdentity(inode: UInt64(st.st_ino), device: st.st_dev))
+        }
+    }
+
     public func move(from: String, to: String) throws {
         // Ensure destination parent exists.
         let parent = (to as NSString).deletingLastPathComponent

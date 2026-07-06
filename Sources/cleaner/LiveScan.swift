@@ -48,3 +48,25 @@ func scanWithSpinner(_ rt: Runtime, plugins: [any CleanerPlugin], context: Plugi
 
 /// Whether to animate: stderr is a TTY and we're not emitting machine output.
 func liveEnabled(json: Bool) -> Bool { isatty(fileno(stderr)) == 1 && !json }
+
+/// Run any async operation while showing a one-line spinner with `label` (detectors use this).
+func withSpinner<T: Sendable>(_ label: String, live: Bool, color: Bool,
+                              _ op: @Sendable () async -> T) async -> (T, String) {
+    let start = Date()
+    let s = Style(enabled: color)
+    let liveLine = LiveLine(enabled: live)
+    let animator: Task<Void, Never>? = live ? Task {
+        var i = 0
+        while !Task.isCancelled {
+            let el = String(format: "%.1fs", Date().timeIntervalSince(start))
+            liveLine.draw("  " + s.hex(0x7ECEC0, Spinner.frame(i)) + "  " + s.hex(0x8B98A5, "\(label) · \(el)"))
+            i += 1
+            try? await Task.sleep(nanoseconds: 90_000_000)
+        }
+        liveLine.clear()
+    } : nil
+    let result = await op()
+    animator?.cancel()
+    await animator?.value
+    return (result, String(format: "%.1fs", Date().timeIntervalSince(start)))
+}

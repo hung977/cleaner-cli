@@ -26,6 +26,20 @@ public protocol FilesystemProviding: Sendable {
 
     /// Move `from` → `to`: an atomic rename on the same volume, else copy-verify-remove.
     func move(from: String, to: String) throws
+
+    /// Walk every regular file under `root` (depth-first, not following symlinks), calling
+    /// `handler` with each file's path, on-disk allocated size, and identity (inode+device for
+    /// hardlink detection). Bounded memory — nothing is accumulated. Used by detectors (specs/19).
+    func enumerateFiles(under root: String,
+                        handler: (_ path: String, _ allocated: ByteCount, _ logical: ByteCount,
+                                  _ fileID: FileIdentity) -> Void)
+}
+
+/// A file's on-disk identity: two paths with the same identity are hardlinks to one file.
+public struct FileIdentity: Sendable, Hashable {
+    public let inode: UInt64
+    public let device: Int32
+    public init(inode: UInt64, device: Int32) { self.inode = inode; self.device = device }
 }
 
 /// Errors surfaced by the filesystem layer.

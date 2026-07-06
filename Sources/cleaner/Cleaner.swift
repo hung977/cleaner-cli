@@ -11,7 +11,8 @@ struct Cleaner: AsyncParsableCommand {
         commandName: "cleaner",
         abstract: "A safe, native macOS disk cleaner for developers.",
         version: "0.1.0-dev",
-        subcommands: [Analyze.self, Clean.self, Staging.self, Doctor.self, Report.self]
+        subcommands: [Analyze.self, Clean.self, Staging.self, Doctor.self, Report.self,
+                      LargeFiles.self, Duplicates.self]
     )
 }
 

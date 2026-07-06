@@ -68,5 +68,14 @@ set +e; "$BIN" analyze >/dev/null 2>&1; rc=$?; set -e
 [ "$rc" -eq 6 ] || fail "invalid config should exit 6 (got $rc)"
 rm -f "$H/.cleaner/config.yml"
 
+echo "› large-files detects a big file"
+mkdir -p "$H/Downloads"; mkfile "$H/Downloads/huge.bin" 200000   # ~195 MB
+"$BIN" large-files --min 100MB "$H/Downloads" | grep -q "huge.bin" || fail "large-files should list huge.bin"
+
+echo "› duplicates detects identical copies (and never deletes)"
+mkfile "$H/Downloads/dupe-a.bin" 2000; cp "$H/Downloads/dupe-a.bin" "$H/Downloads/dupe-b.bin"
+"$BIN" duplicates --min 1MB "$H/Downloads" | grep -qi "reclaimable" || fail "duplicates should report reclaimable"
+assert_exists "$H/Downloads/dupe-a.bin"; assert_exists "$H/Downloads/dupe-b.bin"  # read-only
+
 rm -rf "$(dirname "$H")"
 echo "✓ integration smoke test passed"
