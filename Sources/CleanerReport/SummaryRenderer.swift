@@ -15,16 +15,29 @@ public struct SummaryRenderer: Sendable {
 
     private static let eighths = [" ", "▏", "▎", "▍", "▌", "▋", "▊", "▉"]
 
-    public func analyze(_ result: ScanResult, elapsed: String? = nil) -> String {
+    /// - Parameter scanning: when non-nil `(done, total, spinnerFrame)`, renders a live "scanning"
+    ///   frame (progress header, no call-to-action footer). When nil, the final result.
+    public func analyze(_ result: ScanResult, elapsed: String? = nil,
+                        scanning: (done: Int, total: Int, frame: Int)? = nil) -> String {
         var out: [String] = [""]
         // Header row.
-        out.append(header("DISK RECLAIMABLE", result.totalReclaimable.formatted))
+        if let s = scanning {
+            let spin = style.cyan(spinnerFrame(s.frame))
+            let title = "\(spin)  SCANNING  " + style.gray("\(s.done)/\(s.total)")
+            out.append(header(title, result.totalReclaimable.formatted, rawTitleLen: 12 + "\(s.done)/\(s.total)".count))
+        } else {
+            out.append(header("DISK RECLAIMABLE", result.totalReclaimable.formatted))
+        }
         if let elapsed {
             out.append("  " + style.gray("\(result.findings.count) source(s) · \(elapsed)"))
         }
         if result.findings.isEmpty {
             out.append("")
-            out.append("  " + style.green("Nothing reclaimable") + style.gray(" — your disk is tidy."))
+            if scanning == nil {
+                out.append("  " + style.green("Nothing reclaimable") + style.gray(" — your disk is tidy."))
+            } else {
+                out.append("  " + style.gray("scanning…"))
+            }
             return out.joined(separator: "\n") + "\n"
         }
 
@@ -58,8 +71,12 @@ public struct SummaryRenderer: Sendable {
             out.append("  " + style.yellow("skipped ") + "\(s.pluginID)" + style.gray("  \(s.reason)"))
         }
         out.append("")
-        out.append("  " + style.bold("Total  " + result.totalReclaimable.formatted)
-                   + style.gray("  ·  run ") + style.bold("cleaner clean") + style.gray(" to reclaim"))
+        if scanning == nil {
+            out.append("  " + style.bold("Total  " + result.totalReclaimable.formatted)
+                       + style.gray("  ·  run ") + style.bold("cleaner clean") + style.gray(" to reclaim"))
+        } else {
+            out.append("  " + style.gray("Total so far  ") + style.bold(result.totalReclaimable.formatted))
+        }
         out.append("")
         return out.joined(separator: "\n")
     }
@@ -93,11 +110,16 @@ public struct SummaryRenderer: Sendable {
 
     private enum BarColor { case accent; case risk(RiskLevel) }
 
-    private func header(_ title: String, _ total: String) -> String {
+    private func header(_ title: String, _ total: String, rawTitleLen: Int? = nil) -> String {
         let content = width - 2
-        let pad = max(1, content - title.count - total.count)
-        return "  " + style.bold(title) + String(repeating: " ", count: pad) + style.bold(total)
+        let titleLen = rawTitleLen ?? title.count
+        let pad = max(1, content - titleLen - total.count)
+        // `title` may already contain ANSI (from the caller); don't re-bold it in that case.
+        let head = rawTitleLen == nil ? style.bold(title) : title
+        return "  " + head + String(repeating: " ", count: pad) + style.bold(total)
     }
+
+    private func spinnerFrame(_ i: Int) -> String { Spinner.frame(i) }
 
     private func row(label: String, indent: Int, labelW: Int, value: Int64, scale: Int64,
                      barW: Int, sizeText: String, sizeW: Int, barColor: BarColor,

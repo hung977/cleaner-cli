@@ -5,47 +5,68 @@ import CleanerEngine
 import CleanerPluginAPI
 import CleanerReport
 
-/// Thread-safe progress snapshot shared between the scan callback and the animator task.
-private final class ScanProgressBox: @unchecked Sendable {
+/// Thread-safe holder for the latest partial scan result, shared between the scan callback and
+/// the animator task.
+private final class ScanBox: @unchecked Sendable {
     private let lock = NSLock()
-    private var done = 0, total = 0
-    private var bytes = ByteCount.zero
-    func set(_ d: Int, _ t: Int, _ b: ByteCount) {
-        lock.lock(); done = d; total = t; bytes = b; lock.unlock()
+    private var result = ScanResult()
+    private var done = 0
+    private var total = 0
+    func setTotal(_ t: Int) { lock.lock(); total = t; lock.unlock() }
+    func update(_ r: ScanResult, _ d: Int, _ t: Int) {
+        lock.lock(); result = r; done = d; total = t; lock.unlock()
     }
-    var snapshot: (Int, Int, ByteCount) {
-        lock.lock(); defer { lock.unlock() }; return (done, total, bytes)
+    var snapshot: (ScanResult, Int, Int) {
+        lock.lock(); defer { lock.unlock() }; return (result, done, total)
     }
 }
 
-/// Runs a scan while animating a live spinner on stderr, so the tool never sits silent.
-/// Returns the result plus a human elapsed string. `live` should be false for pipes/CI/--json.
+private func elapsedString(since start: Date) -> String {
+    String(format: "%.1fs", Date().timeIntervalSince(start))
+}
+
+/// Runs a scan while **live-rendering a growing bar chart** on stderr: the chart appears
+/// immediately and fills in (bars grow, proportions rescale) as each source completes. The final
+/// result is returned for the caller to print to stdout. `live == false` for pipes/CI/--json.
 func scanWithSpinner(_ rt: Runtime, plugins: [any CleanerPlugin], context: PluginContext,
                      live: Bool, color: Bool) async -> (ScanResult, String) {
-    let box = ScanProgressBox()
-    let liveLine = LiveLine(enabled: live)
-    let style = Style(enabled: color)
+    let box = ScanBox()
+    box.setTotal(plugins.count)
     let start = Date()
+    let renderer = SummaryRenderer(useColor: color)
 
     let animator: Task<Void, Never>? = live ? Task {
-        var i = 0
+        var lastLines = 0
+        var tick = 0
+        func redraw(clear: Bool) {
+            var frame = ""
+            if lastLines > 0 { frame += "\u{001B}[\(lastLines)A\u{001B}[0J" }  // up + clear-to-end
+            if clear {
+                FileHandle.standardError.write(Data(frame.utf8))
+                lastLines = 0
+                return
+            }
+            let (res, done, total) = box.snapshot
+            var text = renderer.analyze(res, elapsed: elapsedString(since: start),
+                                        scanning: (done, total, tick))
+            while text.hasSuffix("\n") { text.removeLast() }
+            frame += text
+            FileHandle.standardError.write(Data(frame.utf8))
+            lastLines = text.reduce(0) { $1 == "\n" ? $0 + 1 : $0 }
+        }
         while !Task.isCancelled {
-            let (d, t, b) = box.snapshot
-            let elapsed = String(format: "%.1fs", Date().timeIntervalSince(start))
-            let msg = "  " + style.cyan(Spinner.frame(i)) + "  Scanning \(d)/\(max(t, 1)) sources"
-                + style.gray("  ·  \(b.formatted) found  ·  \(elapsed)")
-            liveLine.draw(msg)
-            i += 1
+            redraw(clear: false)
+            tick += 1
             try? await Task.sleep(nanoseconds: 90_000_000)
         }
+        redraw(clear: true)   // erase the live frame so the caller can print the final result
     } : nil
 
-    let result = await rt.scanEngine.scan(plugins: plugins, context: context) { d, t, b in
-        box.set(d, t, b)
-    }
+    let result = await rt.scanEngine.scan(plugins: plugins, context: context,
+                                          onUpdate: { r, d, t in box.update(r, d, t) })
     animator?.cancel()
-    liveLine.clear()
-    return (result, String(format: "%.1fs", Date().timeIntervalSince(start)))
+    await animator?.value
+    return (result, elapsedString(since: start))
 }
 
 /// Whether to animate: stderr is a TTY and we're not emitting machine output.

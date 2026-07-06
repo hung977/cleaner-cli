@@ -13,10 +13,13 @@ public struct ScanEngine: Sendable {
     private let guard_: ProtectedPathGuard
     public init(guard_: ProtectedPathGuard) { self.guard_ = guard_ }
 
-    /// - Parameter progress: called after each plugin finishes with (done, total, bytesFoundSoFar),
-    ///   so the CLI can animate a live spinner instead of sitting silent.
+    /// - Parameters:
+    ///   - progress: called after each plugin finishes with (done, total, bytesFoundSoFar).
+    ///   - onUpdate: called after each plugin finishes with the accumulated, sorted partial
+    ///     result and (done, total) — lets the CLI redraw a live, growing chart.
     public func scan(plugins: [any CleanerPlugin], context: PluginContext,
-                     progress: (@Sendable (Int, Int, ByteCount) -> Void)? = nil) async -> ScanResult {
+                     progress: (@Sendable (Int, Int, ByteCount) -> Void)? = nil,
+                     onUpdate: (@Sendable (ScanResult, Int, Int) -> Void)? = nil) async -> ScanResult {
         let total = plugins.count
         return await withTaskGroup(of: PluginScan.self) { group in
             for plugin in plugins {
@@ -50,16 +53,21 @@ public struct ScanEngine: Sendable {
                     result.skipped.append(.init(pluginID: id, reason: "cancelled"))
                 }
                 done += 1
+                Self.sortFindings(&result.findings)
                 progress?(done, total, result.findings.map(\.reclaimableSize).total())
-            }
-            // Deterministic ordering: largest reclaim first, then by id for ties.
-            result.findings.sort {
-                if $0.reclaimableSize != $1.reclaimableSize {
-                    return $0.reclaimableSize > $1.reclaimableSize
-                }
-                return $0.item.id.rawValue < $1.item.id.rawValue
+                onUpdate?(result, done, total)
             }
             return result
+        }
+    }
+
+    /// Deterministic ordering: largest reclaim first, then by id for ties.
+    static func sortFindings(_ findings: inout [Finding]) {
+        findings.sort {
+            if $0.reclaimableSize != $1.reclaimableSize {
+                return $0.reclaimableSize > $1.reclaimableSize
+            }
+            return $0.item.id.rawValue < $1.item.id.rawValue
         }
     }
 
