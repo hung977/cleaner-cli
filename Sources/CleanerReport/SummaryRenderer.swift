@@ -101,7 +101,7 @@ public struct SummaryRenderer: Sendable {
         if scanning == nil {
             out.append("  " + s.hex(Palette.muted, "Total  ") + s.hexBold(Palette.textStrong, total)
                        + s.hex(Palette.faint, "   ·   ") + s.hex(Palette.muted, "run ")
-                       + s.hexBold(Palette.green, "cleaner clean") + s.hex(Palette.muted, " to reclaim"))
+                       + s.hexBold(Palette.green, "cleaner") + s.hex(Palette.muted, " to reclaim"))
         } else {
             out.append("  " + s.hex(Palette.muted, "discovered so far  ") + s.hexBold(Palette.textStrong, total))
         }
@@ -127,7 +127,7 @@ public struct SummaryRenderer: Sendable {
         if !report.dryRun && ok > 0 {
             out.append("")
             out.append("  " + s.hex(Palette.muted, "Undo with  ")
-                       + s.hexBold(Palette.teal, "cleaner staging restore \(report.sessionID.rawValue)"))
+                       + s.hexBold(Palette.teal, "cleaner undo"))
         }
         out.append("")
         return out.joined(separator: "\n")

@@ -5,75 +5,119 @@ import CleanerCore
 import CleanerEngine
 import CleanerReport
 import CleanerConfig
+import CleanerPlatform
 
 @main
 struct Cleaner: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "cleaner",
-        abstract: "A safe, native macOS disk cleaner for developers.",
+        abstract: "Reclaim disk space safely — scan, pick what to clean, done (recoverable).",
+        discussion: """
+        Run `cleaner` to scan and interactively clean. Nothing is deleted without your \
+        confirmation, and everything is recoverable with `cleaner undo`.
+        """,
         version: "0.1.0-dev",
-        subcommands: [Analyze.self, Clean.self, Staging.self, Doctor.self, Report.self,
-                      LargeFiles.self, Duplicates.self, Docker.self, Brew.self,
-                      Optimize.self, ProfileCmd.self]
-    )
-}
+        subcommands: [Undo.self, Find.self, Docker.self, Brew.self, Doctor.self, ProfileCmd.self])
 
-// MARK: - profile
-
-struct ProfileCmd: AsyncParsableCommand {
-    static let configuration = CommandConfiguration(commandName: "profile",
-        abstract: "List saved profiles from config.yml.", subcommands: [ProfileList.self],
-        defaultSubcommand: ProfileList.self)
-}
-
-struct ProfileList: AsyncParsableCommand {
-    static let configuration = CommandConfiguration(commandName: "list",
-        abstract: "List saved profiles.")
     @OptionGroup var options: GlobalOptions
+    @Flag(name: .long, help: "Preview only — scan and show, clean nothing.") var dryRun = false
+    @Flag(name: .long, help: "Clean Safe items without prompting (automation).") var yes = false
+    @Flag(name: .long, help: "Also pre-select Medium items in the picker.") var all = false
+    @Flag(name: .long, help: "Emit a Markdown report (implies preview).") var md = false
+
     func run() async throws {
         let rt = Runtime(useColor: options.useColor)
         if let e = rt.configError { printErr("\(e)"); throw ExitCode(CleanerExitCode.config.rawValue) }
+        let selc: (include: String?, exclude: String?, risky: Bool)
+        do { selc = try resolveSelection(config: rt.config, profileName: options.profile,
+                                         include: options.include, exclude: options.exclude) }
+        catch { printErr("\(error)"); throw ExitCode(CleanerExitCode.config.rawValue) }
+
+        let plugins = selectPlugins(rt.registry, include: selc.include, exclude: selc.exclude)
+        let ctx = rt.context()
+        let (raw, elapsed) = await scanWithSpinner(rt, plugins: plugins, context: ctx,
+                                                   live: liveEnabled(json: options.json), color: options.useColor)
+        let result = rt.applyConfig(raw)
         let s = Style(enabled: options.useColor)
-        let profs = rt.config.profiles
-        printOut("")
-        if profs.isEmpty {
-            printOut("  " + s.hex(0x8B98A5, "No profiles defined. Add a `profiles:` section to ~/.cleaner/config.yml.") + "\n")
+
+        // ── Machine output ──────────────────────────────────────────────
+        if options.json {
+            printOut(try ReportJSON.encode(ReportJSON.analyze(result))); return
+        }
+        if md {
+            printOut(MarkdownReport.render(result, generatedAt: rt.clock.timestamp())); return
+        }
+
+        // ── Preview (--dry-run): show + suggest next steps, act on nothing ─
+        if dryRun {
+            printOut(rt.renderer.analyze(result, elapsed: elapsed, names: rt.pluginNames(), verbose: options.verbose))
+            printNextSteps(s, result: result)
+            if !result.skipped.isEmpty { throw ExitCode(CleanerExitCode.partial.rawValue) }
             return
         }
-        for name in profs.keys.sorted() {
-            let p = profs[name]!
-            var bits: [String] = []
-            if !p.include.isEmpty { bits.append("include \(p.include.count)") }
-            if !p.exclude.isEmpty { bits.append("exclude \(p.exclude.count)") }
-            if p.risky { bits.append("risky") }
-            printOut("  " + s.hexBold(0x7ECEC0, name) + s.hex(0x5E7180, "  " + (bits.isEmpty ? "all safe sources" : bits.joined(separator: " · "))))
+
+        if result.findings.isEmpty {
+            printOut(rt.renderer.analyze(result, elapsed: elapsed)); return
         }
-        printOut("\n  " + s.hex(0x8B98A5, "use with  ") + s.hexBold(0x8AC776, "cleaner clean --profile <name>") + "\n")
+
+        // Group findings into pickable "sources" (one per plugin), largest first.
+        let names = rt.pluginNames()
+        let sources = Dictionary(grouping: result.findings, by: { $0.pluginID })
+            .map { (id, fs) -> (name: String, findings: [Finding], total: ByteCount, worst: RiskLevel) in
+                (names[id] ?? id.rawValue, fs, fs.map(\.reclaimableSize).total(), fs.map(\.risk).max() ?? .safe)
+            }
+            .sorted { $0.total.bytes > $1.total.bytes }
+
+        // ── Choose what to clean ────────────────────────────────────────
+        var chosen: [Int]
+        if yes {
+            chosen = sources.indices.filter { sources[$0].worst == .safe }   // automation: Safe only
+        } else if isatty(fileno(stdin)) == 1 {
+            let items = sources.map {
+                PickItem(label: $0.name, size: $0.total, risk: $0.worst,
+                         selected: $0.worst == .safe || (all && $0.worst == .medium))
+            }
+            let title = "Reclaim up to \(result.totalReclaimable.formatted) across \(sources.count) sources:"
+            guard let picked = MultiSelect.run(title: title, items: items, style: s) else {
+                printErr("  Cancelled — nothing was changed."); throw ExitCode(CleanerExitCode.cancelled.rawValue)
+            }
+            chosen = picked
+        } else {
+            // Non-interactive without --yes: show and refuse to act (safety).
+            printOut(rt.renderer.analyze(result, elapsed: elapsed, names: names, verbose: options.verbose))
+            printErr("  Not a terminal — run with " + s.hexBold(0x8AC776, "--yes") + " to clean non-interactively.")
+            throw ExitCode(CleanerExitCode.cancelled.rawValue)
+        }
+
+        // Never clean Dangerous (defense in depth; detectors aren't in this scan anyway).
+        let selected = chosen.flatMap { sources[$0].findings }.filter { $0.risk != .dangerous }
+        if selected.isEmpty { printOut("\n  " + s.hex(0x8B98A5, "Nothing selected.")); return }
+
+        let plan = CleanPlan(actions: selected.map { .init(finding: $0, disposition: $0.proposedDisposition) })
+        let report = rt.cleanupEngine.execute(plan, session: rt.session,
+                                              allowedRoots: rt.allowedRoots(plugins, ctx))
+        printOut(rt.renderer.clean(report))
+        let code = report.resolvedExitCode
+        if code != .ok { throw ExitCode(code.rawValue) }
     }
 }
 
-// MARK: - Shared options & helpers
+// MARK: - shared options & helpers
 
 struct GlobalOptions: ParsableArguments {
-    @Flag(name: [.short, .long], help: "Increase output detail.")
+    @Flag(name: [.short, .long], help: "More detail (expand grouped sources).")
     var verbose: Bool = false
-
     @Flag(help: "Emit machine-readable JSON to stdout.")
     var json: Bool = false
-
     @Flag(name: .customLong("no-color"), help: "Disable ANSI color.")
     var noColor: Bool = false
-
-    @Option(help: "Only run these plugins (comma-separated ids).")
+    @Option(help: "Only these plugins (comma-separated ids).")
     var include: String?
-
     @Option(help: "Skip these plugins (comma-separated ids).")
     var exclude: String?
-
     @Option(help: "Use a saved profile from config.yml.")
     var profile: String?
 
-    /// Color only when a TTY, not disabled, and NO_COLOR unset.
     var useColor: Bool {
         if noColor { return false }
         if ProcessInfo.processInfo.environment["NO_COLOR"] != nil { return false }
@@ -84,7 +128,6 @@ struct GlobalOptions: ParsableArguments {
 func printOut(_ s: String) { print(s) }
 func printErr(_ s: String) { FileHandle.standardError.write(Data((s + "\n").utf8)) }
 
-/// Prompt for a yes/no on the TTY. Returns false if not interactive (safety-first).
 func promptYesNo(_ question: String) -> Bool {
     guard isatty(fileno(stdin)) == 1 else { return false }
     FileHandle.standardError.write(Data("\(question) [y/N] ".utf8))
@@ -92,167 +135,103 @@ func promptYesNo(_ question: String) -> Bool {
     return line == "y" || line == "yes"
 }
 
-// MARK: - analyze (US1)
-
-struct Analyze: AsyncParsableCommand {
-    static let configuration = CommandConfiguration(
-        abstract: "Read-only scan: report reclaimable space by category. Never deletes.")
-    @OptionGroup var options: GlobalOptions
-
-    func run() async throws {
-        let rt = Runtime(useColor: options.useColor)
-        if let e = rt.configError { printErr("\(e)"); throw ExitCode(CleanerExitCode.config.rawValue) }
-        let sel: (include: String?, exclude: String?, risky: Bool)
-        do { sel = try resolveSelection(config: rt.config, profileName: options.profile,
-                                        include: options.include, exclude: options.exclude) }
-        catch { printErr("\(error)"); throw ExitCode(CleanerExitCode.config.rawValue) }
-        let plugins = selectPlugins(rt.registry, include: sel.include, exclude: sel.exclude)
-        let (raw, elapsed) = await scanWithSpinner(rt, plugins: plugins, context: rt.context(),
-                                                   live: liveEnabled(json: options.json), color: options.useColor)
-        let result = rt.applyConfig(raw)
-
-        if options.json {
-            printOut(try ReportJSON.encode(ReportJSON.analyze(result)))
-        } else {
-            printOut(rt.renderer.analyze(result, elapsed: elapsed,
-                                         names: rt.pluginNames(), verbose: options.verbose))
-        }
-        let code = result.resolvedExitCode
-        if code != .ok { throw ExitCode(code.rawValue) }
+/// The `optimize`-style suggestions, shown under a preview.
+func printNextSteps(_ s: Style, result: ScanResult) {
+    let shell = ShellAdapter()
+    printOut("")
+    printOut("  " + s.hex(0x6E7D8A, "NEXT STEPS"))
+    func step(_ cmd: String, _ desc: String) {
+        printOut("    " + s.hexBold(0x8AC776, s.padRight(cmd, 22)) + s.hex(0x8B98A5, desc))
     }
+    if result.totalReclaimable.bytes > 0 { step("cleaner", "pick & reclaim \(result.totalReclaimable.formatted)") }
+    step("cleaner find large", "biggest personal files")
+    step("cleaner find dupes", "duplicate files")
+    if shell.available("docker") { step("cleaner docker", "reclaim Docker space") }
+    if shell.available("brew") { step("cleaner brew", "clean old Homebrew versions") }
+    printOut("")
 }
 
-// MARK: - clean (US2)
+// MARK: - undo (rollback; replaces `staging`)
 
-struct Clean: AsyncParsableCommand {
+struct Undo: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
-        abstract: "Scan, preview, confirm, then reclaim to staging (recoverable).")
+        abstract: "Restore the last clean — or a specific session — from staging.")
     @OptionGroup var options: GlobalOptions
-
-    @Flag(help: "Compute everything but mutate nothing (identical numbers).")
-    var dryRun: Bool = false
-
-    @Flag(help: "Skip prompts: auto-clean Safe (🟢) items only, never Dangerous.")
-    var yes: Bool = false
-
-    @Flag(help: "Also include Medium (🟡) items (still requires confirmation).")
-    var risky: Bool = false
+    @Flag(help: "List what can be restored instead of restoring.") var list: Bool = false
+    @Argument(help: "Session id to restore (default: the most recent).") var id: String?
 
     func run() async throws {
         let rt = Runtime(useColor: options.useColor)
-        if let e = rt.configError { printErr("\(e)"); throw ExitCode(CleanerExitCode.config.rawValue) }
-        let sel: (include: String?, exclude: String?, risky: Bool)
-        do { sel = try resolveSelection(config: rt.config, profileName: options.profile,
-                                        include: options.include, exclude: options.exclude) }
-        catch { printErr("\(error)"); throw ExitCode(CleanerExitCode.config.rawValue) }
-        let plugins = selectPlugins(rt.registry, include: sel.include, exclude: sel.exclude)
-        let ctx = rt.context()
-        let (raw, elapsed) = await scanWithSpinner(rt, plugins: plugins, context: ctx,
-                                                   live: liveEnabled(json: options.json), color: options.useColor)
-        let result = rt.applyConfig(raw)
-
-        // Selection: Safe by default; +Medium with --risky or a risky profile; never Dangerous.
-        let includeMedium = risky || sel.risky
-        var selected = result.findings.filter { $0.risk == .safe }
-        if includeMedium { selected += result.findings.filter { $0.risk == .medium } }
-        if yes { selected = selected.filter { $0.risk.isAutoCleanable } }
-
-        if !options.json { printOut(rt.renderer.analyze(result, elapsed: elapsed,
-                                                        names: rt.pluginNames(), verbose: options.verbose)) }
-
-        if selected.isEmpty {
-            if !options.json { printOut("\nNothing selected to clean.") }
-            else { printOut(try ReportJSON.encode(ReportJSON.clean(
-                CleanReport(sessionID: rt.session, dryRun: dryRun)))) }
-            return
-        }
-
-        let total = selected.map(\.reclaimableSize).total()
-        // Confirmation gate (skipped for --yes and --dry-run).
-        if !yes && !dryRun {
-            let q = "\nStage \(selected.count) item(s) to reclaim \(total.formatted)?"
-            guard promptYesNo(q) else {
-                printErr("Aborted — nothing was changed. (use --yes for non-interactive)")
-                throw ExitCode(CleanerExitCode.cancelled.rawValue)
-            }
-        }
-
-        let plan = CleanPlan(actions: selected.map { .init(finding: $0, disposition: $0.proposedDisposition) },
-                             dryRun: dryRun)
-        let report = rt.cleanupEngine.execute(plan, session: rt.session,
-                                              allowedRoots: rt.allowedRoots(plugins, ctx))
-
-        if options.json { printOut(try ReportJSON.encode(ReportJSON.clean(report))) }
-        else { printOut("\n" + rt.renderer.clean(report)) }
-
-        let code = report.resolvedExitCode
-        if code != .ok { throw ExitCode(code.rawValue) }
-    }
-}
-
-// MARK: - staging (US3 rollback)
-
-struct Staging: AsyncParsableCommand {
-    static let configuration = CommandConfiguration(
-        abstract: "Inspect and restore items moved to staging (rollback).",
-        subcommands: [StagingList.self, StagingRestore.self])
-}
-
-struct StagingList: AsyncParsableCommand {
-    static let configuration = CommandConfiguration(commandName: "list",
-        abstract: "List staged sessions and items available to restore.")
-    @OptionGroup var options: GlobalOptions
-
-    func run() async throws {
-        let rt = Runtime(useColor: options.useColor)
-        let entries = try rt.staging.allEntries()
-        if options.json {
-            struct E: Encodable { let session, item, path: String; let bytes: Int64; let at: String }
-            printOut(try ReportJSON.encode(entries.map {
-                E(session: $0.sessionID.rawValue, item: $0.itemID.rawValue,
-                  path: $0.originalPath, bytes: $0.allocatedSize.bytes, at: $0.stagedAt) }))
-            return
-        }
-        if entries.isEmpty { printOut("Staging is empty — nothing to restore."); return }
-        var lastSession = ""
-        for e in entries {
-            if e.sessionID.rawValue != lastSession {
-                printOut("\n\(e.sessionID.rawValue)")
-                lastSession = e.sessionID.rawValue
-            }
-            printOut("   \(e.allocatedSize.formatted)  \(e.originalPath)")
-        }
-        printOut("\nRestore a session with:  cleaner staging restore <session>")
-    }
-}
-
-struct StagingRestore: AsyncParsableCommand {
-    static let configuration = CommandConfiguration(commandName: "restore",
-        abstract: "Restore a staged session (or item) to its original location.")
-    @OptionGroup var options: GlobalOptions
-    @Argument(help: "Session id (or item id) to restore.") var id: String
-
-    func run() async throws {
-        let rt = Runtime(useColor: options.useColor)
+        let s = Style(enabled: options.useColor)
         let sessions = try rt.staging.listSessions()
 
-        var results: [(String, Error?)] = []
-        if sessions.contains(where: { $0.rawValue == id }) {
-            results = try rt.staging.restoreSession(SessionID(id)).map { ($0.0.originalPath, $0.1) }
-        } else if let entry = try rt.staging.allEntries().first(where: { $0.itemID.rawValue == id }) {
-            do { try rt.staging.restore(entry); results = [(entry.originalPath, nil)] }
-            catch { results = [(entry.originalPath, error)] }
-        } else {
-            printErr("No staged session or item with id '\(id)'.")
-            throw ExitCode(CleanerExitCode.usage.rawValue)
+        if list {
+            let entries = try rt.staging.allEntries()
+            if options.json {
+                struct E: Encodable { let session, item, path: String; let bytes: Int64; let at: String }
+                printOut(try ReportJSON.encode(entries.map {
+                    E(session: $0.sessionID.rawValue, item: $0.itemID.rawValue,
+                      path: $0.originalPath, bytes: $0.allocatedSize.bytes, at: $0.stagedAt) }))
+                return
+            }
+            printOut("")
+            if entries.isEmpty { printOut("  " + s.hex(0x8B98A5, "Nothing to undo.") + "\n"); return }
+            var last = ""
+            for e in entries {
+                if e.sessionID.rawValue != last { printOut("  " + s.hexBold(0x7ECEC0, e.sessionID.rawValue)); last = e.sessionID.rawValue }
+                printOut("    " + s.hex(0xE6EDF3, e.allocatedSize.formatted) + "  " + s.hex(0xC6D2DC, e.originalPath))
+            }
+            printOut("")
+            return
         }
 
-        let ok = results.filter { $0.1 == nil }.count
-        for (path, err) in results {
-            if let err { printOut("   ✗ \(path): \(err)") }
-            else { printOut("   ✓ restored \(path)") }
+        guard let target = id ?? sessions.last?.rawValue else {
+            printOut("\n  " + s.hex(0x8B98A5, "Nothing to undo.") + "\n"); return
         }
-        printOut("\nRestored \(ok)/\(results.count) item(s).")
+        guard sessions.contains(where: { $0.rawValue == target }) else {
+            printErr("No staged session '\(target)'. Try: cleaner undo --list")
+            throw ExitCode(CleanerExitCode.usage.rawValue)
+        }
+        let results = try rt.staging.restoreSession(SessionID(target))
+        let ok = results.filter { $0.1 == nil }.count
+        printOut("")
+        for (entry, err) in results {
+            if let err { printOut("    " + s.hex(0xE5595C, "×") + " \(entry.originalPath): \(err)") }
+            else { printOut("    " + s.hex(0x8AC776, "✓") + " " + s.hex(0xC6D2DC, "restored \(entry.originalPath)")) }
+        }
+        printOut("\n  " + s.hexBold(0xE9F0F6, "Restored \(ok)/\(results.count) item(s).") + "\n")
         if ok < results.count { throw ExitCode(CleanerExitCode.partial.rawValue) }
+    }
+}
+
+// MARK: - profile (advanced, hidden from main help)
+
+struct ProfileCmd: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(commandName: "profile",
+        abstract: "List saved profiles from config.yml.", shouldDisplay: false,
+        subcommands: [ProfileList.self], defaultSubcommand: ProfileList.self)
+}
+
+struct ProfileList: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(commandName: "list", abstract: "List saved profiles.")
+    @OptionGroup var options: GlobalOptions
+    func run() async throws {
+        let rt = Runtime(useColor: options.useColor)
+        if let e = rt.configError { printErr("\(e)"); throw ExitCode(CleanerExitCode.config.rawValue) }
+        let s = Style(enabled: options.useColor)
+        let profs = rt.config.profiles
+        printOut("")
+        if profs.isEmpty {
+            printOut("  " + s.hex(0x8B98A5, "No profiles. Add a `profiles:` section to ~/.cleaner/config.yml.") + "\n"); return
+        }
+        for name in profs.keys.sorted() {
+            let p = profs[name]!
+            var bits: [String] = []
+            if !p.include.isEmpty { bits.append("include \(p.include.count)") }
+            if !p.exclude.isEmpty { bits.append("exclude \(p.exclude.count)") }
+            if p.risky { bits.append("risky") }
+            printOut("  " + s.hexBold(0x7ECEC0, name) + s.hex(0x5E7180, "  " + (bits.isEmpty ? "all safe" : bits.joined(separator: " · "))))
+        }
+        printOut("\n  " + s.hex(0x8B98A5, "use with  ") + s.hexBold(0x8AC776, "cleaner --profile <name>") + "\n")
     }
 }

@@ -4,17 +4,17 @@
 > for developers and power users, built native in Swift with a beautiful TUI, safety-first
 > cleanup, preview, and rollback.
 
-**Status:** 📐 Specification phase (SpecKit / Specification-Driven Development). No product
-code yet — this repository currently contains the complete specification suite that a team
-or agent can implement against without further clarification.
+**Status:** 🚧 In development (v0.5). The full SpecKit specification suite lives in
+[`specs/`](./specs); the CLI is being built against it.
 
 ```
-cleaner            # interactive TUI
-cleaner analyze    # read-only disk & junk analysis
-cleaner clean      # preview → confirm → reclaim (nothing is deleted without consent)
-cleaner doctor     # health check (CI-friendly)
-cleaner report     # storage report (--json / --md / --html)
-cleaner optimize   # guided optimization suggestions
+cleaner                 # scan, pick what to clean, reclaim (interactive) — one command
+cleaner --dry-run       # preview only (scan + suggestions, nothing deleted)
+cleaner --yes           # clean Safe items without prompting (automation/CI)
+cleaner --json          # machine-readable output
+cleaner undo            # restore the last clean (everything is recoverable)
+cleaner find large      # biggest personal files    ·    cleaner find dupes   # duplicates
+# advanced: cleaner docker · cleaner brew · cleaner doctor · cleaner profile
 ```
 
 ## What it cleans (safely, with preview + rollback)

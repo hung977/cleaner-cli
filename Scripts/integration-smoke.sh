@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Integration smoke test: drives the built `cleaner` binary through the v0.1 user journeys
-# (analyze → dry-run → clean → restore) against a synthesized home, asserting exit codes and
-# behavior. No real user data is touched (CLEANER_TEST_HOME sandbox). Wired into CI.
+# Integration smoke test: drives the built `cleaner` binary through the v0.5 user journeys
+# against a synthesized home, asserting behavior and exit codes. No real user data is touched
+# (CLEANER_TEST_HOME sandbox). Wired into CI.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -13,7 +13,7 @@ BIN="$(swift build --show-bin-path)/cleaner"
 
 H="$(mktemp -d)/home"
 mkdir -p "$H/Library/Developer/Xcode/DerivedData/MyApp-abc/Build" \
-         "$H/.npm/_cacache/aa" "$H/.Trash/junk" "$H/Documents"
+         "$H/.npm/_cacache/aa" "$H/.Trash/junk" "$H/Documents" "$H/Downloads" "$H/.cleaner"
 mkfile() { mkdir -p "$(dirname "$1")"; dd if=/dev/zero of="$1" bs=1024 count="$2" 2>/dev/null; }
 mkfile "$H/Library/Developer/Xcode/DerivedData/MyApp-abc/Build/x.o" 2000
 mkfile "$H/.npm/_cacache/aa/d" 1000
@@ -25,73 +25,59 @@ fail() { echo "✗ $1"; exit 1; }
 assert_exists() { [ -e "$1" ] || fail "expected to exist: $1"; }
 assert_absent() { [ -e "$1" ] && fail "expected gone: $1" || true; }
 
-echo "› analyze (expect exit 0)"
-"$BIN" analyze >/dev/null; [ $? -eq 0 ] || fail "analyze exit"
+echo "› cleaner --dry-run previews + shows NEXT STEPS (exit 0)"
+out="$("$BIN" --dry-run)"; echo "$out" | grep -q "DISK RECLAIMABLE" || fail "dry-run header"
+echo "$out" | grep -q "NEXT STEPS" || fail "dry-run should suggest next steps"
 
-echo "› analyze --json is valid JSON"
-"$BIN" analyze --json | python3 -c 'import json,sys; json.load(sys.stdin)' || fail "analyze json"
+echo "› --json is valid JSON"
+"$BIN" --json | python3 -c 'import json,sys; json.load(sys.stdin)' || fail "json"
+
+echo "› --md emits a Markdown report"
+"$BIN" --md | grep -q "# cleaner — Storage Report" || fail "md report"
 
 echo "› dry-run mutates nothing"
-"$BIN" clean --dry-run >/dev/null
+"$BIN" --dry-run >/dev/null
 assert_exists "$H/Library/Developer/Xcode/DerivedData/MyApp-abc"
 assert_exists "$H/.npm/_cacache"
 
-echo "› clean --yes stages Safe only (Trash 🟡 survives)"
-"$BIN" clean --yes >/dev/null
+echo "› --yes cleans Safe only (Trash 🟡 survives, protected untouched)"
+"$BIN" --yes >/dev/null
 assert_absent "$H/Library/Developer/Xcode/DerivedData/MyApp-abc"
 assert_absent "$H/.npm/_cacache"
-assert_exists "$H/.Trash/junk"                 # 🟡 not auto-cleaned under --yes
-assert_exists "$H/Documents/DO-NOT-DELETE.txt" # protected, never touched
-
-echo "› restore brings staged items back"
-SID="$("$BIN" staging list --json | python3 -c 'import json,sys; print(json.load(sys.stdin)[0]["session"])')"
-"$BIN" staging restore "$SID" >/dev/null
-assert_exists "$H/Library/Developer/Xcode/DerivedData/MyApp-abc/Build/x.o"
-
-echo "› protected file still present after full journey"
+assert_exists "$H/.Trash/junk"
 assert_exists "$H/Documents/DO-NOT-DELETE.txt"
 
+echo "› cleaner undo restores the last clean"
+"$BIN" undo >/dev/null
+assert_exists "$H/Library/Developer/Xcode/DerivedData/MyApp-abc/Build/x.o"
+assert_exists "$H/Documents/DO-NOT-DELETE.txt"
+
+echo "› undo --list shows staged sessions"
+"$BIN" undo --list --json | python3 -c 'import json,sys; json.load(sys.stdin)' || fail "undo --list json"
+
 echo "› doctor --ci is healthy (exit 0)"
-"$BIN" doctor --ci >/dev/null || fail "doctor --ci should exit 0 in a sane sandbox"
+"$BIN" doctor --ci >/dev/null || fail "doctor --ci"
 
-echo "› report --md produces a Markdown report"
-"$BIN" report --format md | grep -q "# cleaner — Storage Report" || fail "report --md header"
-
-echo "› config ignore hides matching findings"
-mkfile "$H/Library/Developer/Xcode/DerivedData/Keep-me/z" 500
-printf 'version: 1\nignore:\n  - "*Keep*"\n' > "$H/.cleaner/config.yml"
-"$BIN" analyze | grep -q "Keep-me" && fail "ignored item should be hidden" || true
-
-echo "› invalid config exits 6"
-printf 'version: 99\n' > "$H/.cleaner/config.yml"
-set +e; "$BIN" analyze >/dev/null 2>&1; rc=$?; set -e
-[ "$rc" -eq 6 ] || fail "invalid config should exit 6 (got $rc)"
-rm -f "$H/.cleaner/config.yml"
-
-echo "› large-files detects a big file"
-mkdir -p "$H/Downloads"; mkfile "$H/Downloads/huge.bin" 200000   # ~195 MB
-"$BIN" large-files --min 100MB "$H/Downloads" | grep -q "huge.bin" || fail "large-files should list huge.bin"
-
-echo "› duplicates detects identical copies (and never deletes)"
+echo "› find large / find dupes (read-only)"
+mkfile "$H/Downloads/huge.bin" 200000
+"$BIN" find large --min 100MB "$H/Downloads" | grep -q "huge.bin" || fail "find large"
 mkfile "$H/Downloads/dupe-a.bin" 2000; cp "$H/Downloads/dupe-a.bin" "$H/Downloads/dupe-b.bin"
-"$BIN" duplicates --min 1MB "$H/Downloads" | grep -qi "reclaimable" || fail "duplicates should report reclaimable"
-assert_exists "$H/Downloads/dupe-a.bin"; assert_exists "$H/Downloads/dupe-b.bin"  # read-only
+"$BIN" find dupes --min 1MB "$H/Downloads" | grep -qi "reclaimable" || fail "find dupes"
+assert_exists "$H/Downloads/dupe-a.bin"; assert_exists "$H/Downloads/dupe-b.bin"
 
-echo "› docker command degrades cleanly when unavailable"
+echo "› docker degrades cleanly; brew runs if present"
 set +e; "$BIN" docker >/dev/null 2>&1; rc=$?; set -e
-{ [ "$rc" -eq 0 ] || [ "$rc" -eq 10 ]; } || fail "docker should exit 0 or 10 (got $rc)"
+{ [ "$rc" -eq 0 ] || [ "$rc" -eq 10 ]; } || fail "docker exit (got $rc)"
+if command -v brew >/dev/null 2>&1; then "$BIN" brew >/dev/null 2>&1 || fail "brew"; fi
 
-echo "› brew command runs (dry-run) if Homebrew present"
-if command -v brew >/dev/null 2>&1; then "$BIN" brew >/dev/null 2>&1 || fail "brew command should not crash"; fi
-
-echo "› optimize runs (read-only)"
-"$BIN" optimize >/dev/null || fail "optimize should succeed"
-
-echo "› profiles: list, scoped analyze, and unknown profile → exit 6"
+echo "› profiles: list + unknown profile → exit 6; invalid config → exit 6"
 printf 'version: 1\nprofiles:\n  xcode-only:\n    include: [dev.cleaner.xcode.deriveddata]\n' > "$H/.cleaner/config.yml"
-"$BIN" profile list | grep -q "xcode-only" || fail "profile list should show xcode-only"
-set +e; "$BIN" analyze --profile nope >/dev/null 2>&1; rc=$?; set -e
-[ "$rc" -eq 6 ] || fail "unknown profile should exit 6 (got $rc)"
+"$BIN" profile list | grep -q "xcode-only" || fail "profile list"
+set +e; "$BIN" --dry-run --profile nope >/dev/null 2>&1; rc=$?; set -e
+[ "$rc" -eq 6 ] || fail "unknown profile → 6 (got $rc)"
+printf 'version: 99\n' > "$H/.cleaner/config.yml"
+set +e; "$BIN" --dry-run >/dev/null 2>&1; rc=$?; set -e
+[ "$rc" -eq 6 ] || fail "invalid config → 6 (got $rc)"
 rm -f "$H/.cleaner/config.yml"
 
 rm -rf "$(dirname "$H")"

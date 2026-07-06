@@ -33,10 +33,18 @@ func abbreviate(_ path: String, home: String) -> String {
     path.hasPrefix(home) ? "~" + path.dropFirst(home.count) : path
 }
 
-// MARK: - large-files
+// MARK: - find (parent for detectors)
+
+struct Find: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(commandName: "find",
+        abstract: "Find large files or duplicates (read-only; nothing is deleted).",
+        subcommands: [LargeFiles.self, Duplicates.self])
+}
+
+// MARK: - find large
 
 struct LargeFiles: AsyncParsableCommand {
-    static let configuration = CommandConfiguration(commandName: "large-files",
+    static let configuration = CommandConfiguration(commandName: "large",
         abstract: "Find the largest files under given folders (read-only; nothing is deleted).")
     @OptionGroup var options: GlobalOptions
     @Option(help: "Minimum size, e.g. 100MB, 2GB.") var min: String = "100MB"
@@ -86,7 +94,7 @@ struct LargeFiles: AsyncParsableCommand {
 // MARK: - duplicates
 
 struct Duplicates: AsyncParsableCommand {
-    static let configuration = CommandConfiguration(commandName: "duplicates",
+    static let configuration = CommandConfiguration(commandName: "dupes",
         abstract: "Find byte-identical duplicate files (read-only; nothing is deleted).")
     @OptionGroup var options: GlobalOptions
     @Option(help: "Ignore files smaller than this, e.g. 1MB.") var min: String = "1MB"

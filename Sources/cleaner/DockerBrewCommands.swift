@@ -12,7 +12,7 @@ import CleanerReport
 /// `system prune` (data-loss risk, specs/plugins/plugin-docker.md).
 struct Docker: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
-        abstract: "Show Docker reclaimable space; --prune runs safe prunes (never volumes).")
+        abstract: "Show Docker reclaimable space; --prune runs safe prunes (never volumes).", shouldDisplay: false)
     @OptionGroup var options: GlobalOptions
     @Flag(help: "Prune dangling images, build cache and stopped containers (never volumes).")
     var prune: Bool = false
@@ -79,7 +79,7 @@ struct Docker: AsyncParsableCommand {
 /// rather than deleting files (specs/plugins/plugin-homebrew.md).
 struct Brew: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
-        abstract: "Show what `brew cleanup` would remove; --run performs it.")
+        abstract: "Show what `brew cleanup` would remove; --run performs it.", shouldDisplay: false)
     @OptionGroup var options: GlobalOptions
     @Flag(help: "Actually run `brew cleanup`.") var run: Bool = false
     @Flag(help: "Skip the confirmation prompt.") var yes: Bool = false

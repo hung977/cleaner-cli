@@ -14,7 +14,7 @@ struct HealthCheck: Encodable {
 /// CI exit contract: 0 healthy / 3 warnings / 1 critical (Constitution Art. 7).
 struct Doctor: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
-        abstract: "Check the environment and the tool's health.")
+        abstract: "Check the environment and the tool's health.", shouldDisplay: false)
     @OptionGroup var options: GlobalOptions
     @Flag(help: "CI mode: exit 0 healthy / 3 warnings / 1 critical; no color.")
     var ci: Bool = false
