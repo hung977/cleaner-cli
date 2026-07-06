@@ -68,6 +68,30 @@ struct PluginTests {
         #expect(!f.risk.isAutoCleanable)          // never under --yes
     }
 
+    @Test("v0.5 dev-cache plugins detect their stores as Safe/stageable")
+    func devCaches() async throws {
+        let base = NSTemporaryDirectory() + "cleaner-devcache-" + UUID().uuidString
+        let home = base + "/home"
+        func mk(_ rel: String) {
+            let p = home + "/" + rel + "/blob.bin"
+            try? FileManager.default.createDirectory(atPath: home + "/" + rel, withIntermediateDirectories: true)
+            FileManager.default.createFile(atPath: p, contents: Data(repeating: 3, count: 5000))
+        }
+        mk("Library/Caches/org.swift.swiftpm")
+        mk("Library/Caches/CocoaPods")
+        mk("Library/Caches/pip")
+        mk(".gradle/caches")
+        mk("Library/Caches/Homebrew")
+        defer { try? FileManager.default.removeItem(atPath: base) }
+        let ctx = PluginContext(fs: fs, home: home, now: Date(timeIntervalSince1970: 0))
+
+        for plugin in DevCachePlugins.all() {
+            let findings = try await plugin.scan(ctx)
+            #expect(!findings.isEmpty, "\(plugin.metadata.id) should find its store")
+            #expect(findings.allSatisfy { $0.risk == .safe && $0.proposedDisposition == .stage })
+        }
+    }
+
     @Test("plugins report nothing when their roots are absent")
     func emptyWhenAbsent() async throws {
         let empty = PluginContext(fs: fs, home: "/nonexistent-\(UUID().uuidString)",

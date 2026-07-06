@@ -39,9 +39,12 @@ enum PluginSupport {
     }
 }
 
-/// The compile-time set of plugins shipped with v0.1 (CC-8, static registry).
+/// The compile-time set of plugins shipped with the CLI (CC-8, static registry).
 public enum BundledPlugins {
     public static func all() -> [any CleanerPlugin] {
-        [XcodeDerivedDataPlugin(), NpmCachePlugin(), TrashPlugin()]
+        var plugins: [any CleanerPlugin] = [XcodeDerivedDataPlugin(), NpmCachePlugin()]
+        plugins += DevCachePlugins.all()   // v0.5: SwiftPM, CocoaPods, pip, Gradle, Homebrew
+        plugins.append(TrashPlugin())      // 🟡 last
+        return plugins
     }
 }
