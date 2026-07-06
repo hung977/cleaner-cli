@@ -25,8 +25,9 @@ profiles:          # named selection presets, used via --profile <name>
     include:
       - dev.cleaner.xcode.deriveddata
       - dev.cleaner.swiftpm.cache
-  aggressive:
-    risky: true    # includes Medium items
+  no-browser:
+    exclude:
+      - dev.cleaner.browser.cache
 ```
 
 ## Keys
@@ -51,9 +52,8 @@ flag would otherwise select them.
 Named selection presets, applied on the command line with `--profile <name>`.
 Each profile can set:
 
-- `include` — a list of plugin ids to include.
-- `exclude` — a list of plugin ids to exclude.
-- `risky: true` — include Medium items (equivalent to `--all`).
+- `include` — a list of plugin ids to include (only these are scanned).
+- `exclude` — a list of plugin ids to skip.
 
 List saved profiles with:
 

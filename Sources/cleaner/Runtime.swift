@@ -93,14 +93,14 @@ struct SelectionError: Error, CustomStringConvertible {
 /// Combine a `--profile` with CLI `--include/--exclude` (CLI always wins). Returns the effective
 /// include/exclude selectors and whether the profile requests risky (Medium) cleaning.
 func resolveSelection(config: CleanerConfiguration, profileName: String?,
-                      include: String?, exclude: String?) throws -> (include: String?, exclude: String?, risky: Bool) {
-    guard let name = profileName else { return (include, exclude, false) }
+                      include: String?, exclude: String?) throws -> (include: String?, exclude: String?) {
+    guard let name = profileName else { return (include, exclude) }
     guard let p = config.profiles[name] else {
         throw SelectionError(message: "unknown profile '\(name)' — see: cleaner profile list")
     }
     let inc = include ?? (p.include.isEmpty ? nil : p.include.joined(separator: ","))
     let exc = exclude ?? (p.exclude.isEmpty ? nil : p.exclude.joined(separator: ","))
-    return (inc, exc, p.risky)
+    return (inc, exc)
 }
 
 /// Resolve `--include`/`--exclude` (comma-separated plugin ids) into a selected plugin set.

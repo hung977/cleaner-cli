@@ -41,15 +41,14 @@ struct ConfigTests {
         profiles:
           xcode-only:
             include: [dev.cleaner.xcode.deriveddata]
-          aggressive:
-            risky: true
+          no-browser:
+            exclude: [dev.cleaner.browser.cache]
         """)
         defer { try? FileManager.default.removeItem(atPath: (path as NSString).deletingLastPathComponent) }
         let cfg = try ConfigLoader().load(path: path)
         #expect(cfg.profiles.count == 2)
         #expect(cfg.profiles["xcode-only"]?.include == ["dev.cleaner.xcode.deriveddata"])
-        #expect(cfg.profiles["xcode-only"]?.risky == false)
-        #expect(cfg.profiles["aggressive"]?.risky == true)
+        #expect(cfg.profiles["no-browser"]?.exclude == ["dev.cleaner.browser.cache"])
     }
 
     @Test("unsupported version throws (exit 6 territory)")

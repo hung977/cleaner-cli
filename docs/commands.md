@@ -2,7 +2,7 @@
 
 `cleaner` is a safe, native macOS disk-cleaner. It scans well-known cache and
 temp locations, shows you what it found grouped by source, and reclaims space
-only after you confirm. Cleaned items are **moved to a recoverable staging
+only after you decide. Cleaned items are **moved to a recoverable staging
 area**, not permanently deleted (see [safety.md](./safety.md)).
 
 ## `cleaner`
@@ -10,11 +10,18 @@ area**, not permanently deleted (see [safety.md](./safety.md)).
 The primary command. Running it with no arguments:
 
 1. Scans all sources.
-2. Prints a grouped summary (by source, sizes right-aligned, risk-coloured).
-3. Asks `Reclaim X? [Y/n]`.
+2. Prints a grouped summary (by source, sizes right-aligned).
+3. Asks:
 
-Pressing Enter or `y` cleans the **Safe (🟢)** items by moving them to staging.
-Pressing `n` aborts without touching anything.
+```
+Clean all <size>? [Y = all · s = select each · n = cancel]
+```
+
+| Answer | Result |
+| --- | --- |
+| `Y` / Enter | Clean **everything** found (moves it to staging). |
+| `s` | Walk each source with a `clean? [y/N]` prompt, picking per-source. |
+| `n` | Cancel without touching anything. |
 
 ```
 cleaner
@@ -24,11 +31,10 @@ cleaner
 
 | Flag | Description |
 | --- | --- |
+| `--yes` | Skip the prompt and clean everything found. Intended for automation/CI. |
 | `--dry-run` | Preview only. Shows the summary plus a "NEXT STEPS" block and cleans nothing. |
-| `--yes` | Skip the prompt and auto-clean Safe items. Intended for automation/CI. |
-| `--all` | Also clean **Medium (🟡)** items (browser/app caches, logs, DeviceSupport). Never touches Dangerous (🔴). |
 | `--json` | Machine-readable JSON output, including a `schemaVersion` field. |
-| `--md` | Markdown storage report, grouped by source, with a Risk column. |
+| `--md` | Markdown storage report, grouped by source, with columns `Source \| Reclaimable`. |
 | `-v`, `--verbose` | Expand grouped sources into individual items. |
 | `--no-color` | Disable ANSI colour. |
 | `--include <ids>` | Comma-separated plugin ids to include. |
@@ -38,21 +44,24 @@ cleaner
 ### Examples
 
 ```bash
+# Scan and decide interactively (all / select each / cancel)
+cleaner
+
 # Preview what would be reclaimed, change nothing
 cleaner --dry-run
 
-# Clean Safe items without a prompt
+# Clean everything found, no prompt
 cleaner --yes
-
-# Clean Safe + Medium items after confirmation
-cleaner --all
 
 # Emit JSON for tooling
 cleaner --json
 
 # Clean everything except browser caches
-cleaner --all --exclude dev.cleaner.browser.cache
+cleaner --yes --exclude dev.cleaner.browser.cache
 ```
+
+To pick specific things, run `cleaner` and choose `s` (select each), then
+answer `y`/`n` per source.
 
 ## `cleaner undo`
 
@@ -106,7 +115,7 @@ Hidden from the main help, but still runnable.
 Show Docker reclaimable space via `docker system df`.
 
 ```bash
-cleaner docker [--prune] [--yes]
+cleaner docker [--prune]
 ```
 
 `--prune` runs **only safe prunes** (image, builder, container). It **never**
@@ -117,7 +126,7 @@ runs volume prunes or `docker system prune`.
 Show a `brew cleanup` dry-run.
 
 ```bash
-cleaner brew [--run] [--yes]
+cleaner brew [--run]
 ```
 
 `--run` performs the cleanup.
@@ -151,3 +160,6 @@ cleaner profile list
 | `5` | Cancelled |
 | `6` | Config error |
 | `8` | Safety (blocked a protected path) |
+
+See [safety.md](./safety.md) for the safety model and [faq.md](./faq.md) for
+common questions.

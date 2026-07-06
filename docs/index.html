@@ -120,17 +120,16 @@
 <div class="d">11 sources · 7.8s</div>
 <div>&nbsp;</div>
 <div class="row"><span class="hd">Developer Cache</span><span class="g" style="font-weight:700">22.8 GB</span></div>
-<div class="row"><span>&nbsp;&nbsp;Xcode DerivedData (7)</span><span class="g">3.4 GB</span></div>
-<div class="row"><span>&nbsp;&nbsp;SwiftPM cache (2)</span><span class="g">4.6 GB</span></div>
-<div class="row"><span>&nbsp;&nbsp;Gradle caches</span><span class="g">4.6 GB</span></div>
-<div class="row"><span class="m">&nbsp;&nbsp;Xcode Archives (16)</span><span class="a">623.8 MB</span></div>
+<div class="row"><span>&nbsp;&nbsp;Xcode DerivedData (7)</span><span>3.4 GB</span></div>
+<div class="row"><span>&nbsp;&nbsp;SwiftPM cache (2)</span><span>4.6 GB</span></div>
+<div class="row"><span>&nbsp;&nbsp;Gradle caches</span><span>4.6 GB</span></div>
 <div>&nbsp;</div>
-<div class="row"><span class="hd">Browser Cache</span><span class="a" style="font-weight:700">1.5 GB</span></div>
-<div class="row"><span>&nbsp;&nbsp;Chrome cache</span><span class="a">1.5 GB</span></div>
+<div class="row"><span class="hd">Browser Cache</span><span class="g" style="font-weight:700">1.5 GB</span></div>
+<div class="row"><span>&nbsp;&nbsp;Chrome cache</span><span>1.5 GB</span></div>
 <div>&nbsp;</div>
-<div><span class="m">Total</span> <b>24.9 GB</b>&nbsp; <span class="d">·</span> &nbsp;<span class="g">14.4 GB</span> <span class="m">Safe now · </span><span class="a">9.9 GB</span> <span class="m">more with</span> <span class="a">--all</span></div>
+<div><span class="m">Total</span> <b>24.9 GB</b>&nbsp; <span class="d">·</span> &nbsp;<span class="m">run</span> <span class="g">cleaner</span> <span class="m">to reclaim</span></div>
 <div>&nbsp;</div>
-<div>&nbsp;&nbsp;Reclaim <span class="g">14.4 GB</span>? <span class="m">[Y/n]</span> ▌</div>
+<div>&nbsp;&nbsp;Clean all <span class="g">24.9 GB</span>? <span class="m">[Y = all · s = select each · n = cancel]</span> ▌</div>
       </div>
     </div>
     <p class="d" style="font-size:13px;color:var(--dim);margin-top:14px">Nothing is deleted without your confirmation. Undo anytime with <code style="color:var(--teal)">cleaner undo</code>.</p>
@@ -141,7 +140,7 @@
     <p class="sub">Native depth, provable safety, and a workflow that fits the terminal.</p>
     <div class="grid">
       <div class="card"><div class="ic">🛟</div><h3>Recoverable by default</h3><p>Cleaned items move to a staging area, not the void. One <code>cleaner undo</code> restores them byte-for-byte.</p></div>
-      <div class="card"><div class="ic">🎯</div><h3>Risk-aware</h3><p>Every source is graded Safe / Medium / Dangerous. Safe is cleaned by default; Dangerous is never auto-touched.</p></div>
+      <div class="card"><div class="ic">🎯</div><h3>You choose</h3><p>Clean everything, or press <code>s</code> to pick each source with a <code>y/N</code> prompt. Nothing is removed without consent.</p></div>
       <div class="card"><div class="ic">⚡</div><h3>Deep &amp; native</h3><p>Xcode, SwiftPM, Gradle, npm, Docker, Homebrew, browser &amp; app caches, logs — measured by true on-disk size.</p></div>
       <div class="card"><div class="ic">🔒</div><h3>Protected paths</h3><p>Documents, Desktop, SSH keys, Keychains and system files can never be deleted — enforced in the engine.</p></div>
       <div class="card"><div class="ic">🤖</div><h3>Scriptable</h3><p><code>--yes</code> for automation, <code>--json</code> / <code>--md</code> for machines, a clean exit-code contract for CI.</p></div>
@@ -153,12 +152,12 @@
     <h2>Safety first — it's the whole point</h2>
     <p class="sub">A byte wrongly deleted is worse than a gigabyte wrongly kept.</p>
     <ul class="checks">
-      <li>Preview → confirm → execute, always</li>
+      <li>You choose — all, pick each, or cancel</li>
       <li>Moves to staging, not permanent delete</li>
       <li><code>cleaner undo</code> restores the last clean</li>
       <li>Never touches Documents / Desktop / keys</li>
       <li>Browser cache only — never cookies/passwords</li>
-      <li>Dangerous items shown but never auto-cleaned</li>
+      <li><code>--dry-run</code> changes absolutely nothing</li>
       <li>Append-only audit log of every action</li>
       <li>Honest sizes — dry-run equals the real run</li>
     </ul>
@@ -168,8 +167,7 @@
     <h2>Commands</h2>
     <p class="sub">One command to clean; a few more when you want them. <a href="https://github.com/hung977/cleaner-cli/blob/main/docs/commands.md">Full reference →</a></p>
     <table class="cmds">
-      <tr><td class="c"><code>cleaner</code></td><td class="d">Scan, preview, confirm, reclaim (Safe items, recoverable)</td></tr>
-      <tr><td class="c"><code>cleaner --all</code></td><td class="d">Also clean Medium items (browser/app caches, logs)</td></tr>
+      <tr><td class="c"><code>cleaner</code></td><td class="d">Scan, then clean all or pick each source (recoverable)</td></tr>
       <tr><td class="c"><code>cleaner --dry-run</code></td><td class="d">Preview only — clean nothing</td></tr>
       <tr><td class="c"><code>cleaner --yes</code></td><td class="d">No prompt — for automation / CI</td></tr>
       <tr><td class="c"><code>cleaner undo</code></td><td class="d">Restore the last clean</td></tr>

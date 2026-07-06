@@ -28,9 +28,9 @@ Builds from source with `swift build` (needs the Xcode command-line tools).
 ## Quick start
 
 ```sh
-cleaner                 # scan → summary → "Reclaim X? [Y/n]" → clean (recoverable)
-cleaner --all           # also clean Medium items (browser/app caches, logs)
+cleaner                 # scan → "Clean all X? [Y = all · s = select each · n = cancel]"
 cleaner --dry-run       # preview only, delete nothing
+cleaner --yes           # clean everything found, no prompt (automation)
 cleaner undo            # restore the last clean, byte-for-byte
 ```
 
@@ -44,20 +44,19 @@ cleaner undo            # restore the last clean, byte-for-byte
     Xcode DerivedData (7)                              3.4 GB
     SwiftPM cache (2)                                  4.6 GB
     Gradle caches                                      4.6 GB
-    Xcode Archives (16)                              623.8 MB   (never auto-cleaned)
 
   Browser Cache                                        1.5 GB
     Chrome cache                                       1.5 GB
 
-  Total  24.9 GB   ·   14.4 GB Safe now · 9.9 GB more with --all
+  Total  24.9 GB   ·   run cleaner to reclaim
 
-  Reclaim 14.4 GB? [Y/n]
+  Clean all 24.9 GB? [Y = all · s = select each · n = cancel]
 ```
 
 ## Why cleaner
 
-- **🛟 Recoverable by default** — cleaned items move to a staging area, not the void. `cleaner undo` restores them byte-for-byte.
-- **🎯 Risk-aware** — every source is graded 🟢 Safe / 🟡 Medium / 🔴 Dangerous. Safe is cleaned by default; Dangerous is never auto-touched.
+- **🛟 Everything is recoverable** — cleaned items move to a staging area, not the void. `cleaner undo` restores the last clean byte-for-byte.
+- **🎯 You choose** — clean everything, or `s` to pick each source with a `y/N` prompt. Nothing is removed without your consent (`--dry-run` changes nothing).
 - **🔒 Protected paths** — Documents, Desktop, SSH keys, Keychains and system files can never be deleted, enforced in the engine independently of plugins.
 - **⚡ Native & deep** — uses Foundation / APFS APIs, measures true on-disk size (not logical), no shelling out where a native API exists.
 - **🤖 Scriptable** — `--yes` for automation, `--json`/`--md` for machines, a clean exit-code contract for CI.
@@ -65,32 +64,32 @@ cleaner undo            # restore the last clean, byte-for-byte
 
 ## What it cleans
 
-| Category | Sources | Risk |
-|---|---|---|
-| **Developer Cache** | Xcode DerivedData · SwiftPM · CocoaPods · pip · Gradle · Homebrew cache · npm/yarn/pnpm | 🟢 Safe |
-| | Xcode DeviceSupport · orphaned Simulator devices | 🟡 Medium |
-| | Xcode Archives (dSYMs / shipped builds) | 🔴 never auto |
-| **Browser Cache** | Chrome · Safari · Firefox · Edge · Brave — *cache only, never cookies/history/passwords* | 🟡 Medium |
-| **Application Cache** | `~/Library/Caches` (excl. dev/browser) | 🟡 Medium |
-| **Logs & Crash Reports** | `~/Library/Logs` | 🟡 Medium |
-| **Trash** | `~/.Trash` | 🟡 Medium |
+| Category | Sources |
+|---|---|
+| **Developer Cache** | Xcode DerivedData · SwiftPM · CocoaPods · pip · Gradle · Homebrew cache · npm/yarn/pnpm · Xcode DeviceSupport & Archives · orphaned Simulator devices |
+| **Browser Cache** | Chrome · Safari · Firefox · Edge · Brave — *cache only, never cookies/history/passwords* |
+| **Application Cache** | `~/Library/Caches` (excl. dev/browser) |
+| **Logs & Crash Reports** | `~/Library/Logs` |
+| **Trash** | `~/.Trash` |
 
 Plus external tools via their own commands: `cleaner docker` (safe prunes only) and `cleaner brew`.
 
 ## Safety
 
-A byte wrongly deleted is worse than a gigabyte wrongly kept. Every destructive action is
-**preview → confirm → execute**; the default disposition is *move-to-staging*, not permanent
-delete. `cleaner --yes` cleans **Safe** only; `--all` adds **Medium**; **Dangerous** is never
-auto-cleaned. Nothing outside plugin-declared roots — and never a protected path — is ever
-touched. Every action is recorded in an append-only audit log. See **[docs/safety.md](./docs/safety.md)**.
+A byte wrongly deleted is worse than a gigabyte wrongly kept. Three guarantees:
+**(1) you choose** — clean all, pick each source, or cancel; nothing is removed without consent
+(`--dry-run` changes nothing); **(2) everything is recoverable** — cleaned items are *moved to a
+staging quarantine*, not deleted, and `cleaner undo` restores them byte-for-byte; **(3) protected
+paths can never be touched** — Documents, Desktop, SSH keys, Keychains, system files (enforced in
+the engine, independently of plugins). Every action is recorded in an append-only audit log.
+See **[docs/safety.md](./docs/safety.md)**.
 
 ## Commands
 
 | Command | What it does |
 |---|---|
-| `cleaner` | Scan, preview, confirm, reclaim (Safe items, recoverable) |
-| `cleaner --all` / `--dry-run` / `--yes` | Include Medium / preview only / no prompt |
+| `cleaner` | Scan, then clean all or pick each source (recoverable) |
+| `cleaner --dry-run` / `--yes` | Preview only / clean everything, no prompt |
 | `cleaner undo` · `undo --list` | Restore the last clean / list what can be restored |
 | `cleaner find large` · `find dupes` | Largest files / duplicate files (read-only) |
 | `cleaner --json` · `--md` | Machine-readable / Markdown report |
@@ -104,9 +103,9 @@ Full reference: **[docs/commands.md](./docs/commands.md)** · Config: **[docs/co
 
 ```yaml
 version: 1
-ignore:  ["*Keep*"]            # drop matching findings
+ignore:  ["*Keep*"]                             # drop matching findings from results
 profiles:
-  aggressive: { risky: true }  # cleaner --profile aggressive
+  no-browser: { exclude: [dev.cleaner.browser.cache] }   # cleaner --profile no-browser
 ```
 
 ## Build from source

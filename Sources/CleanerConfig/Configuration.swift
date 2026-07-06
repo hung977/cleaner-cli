@@ -6,20 +6,17 @@ import Yams
 public struct Profile: Sendable, Codable, Equatable {
     public var include: [String]
     public var exclude: [String]
-    public var risky: Bool
 
-    public init(include: [String] = [], exclude: [String] = [], risky: Bool = false) {
+    public init(include: [String] = [], exclude: [String] = []) {
         self.include = include
         self.exclude = exclude
-        self.risky = risky
     }
 
-    enum CodingKeys: String, CodingKey { case include, exclude, risky }
+    enum CodingKeys: String, CodingKey { case include, exclude }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         self.include = try c.decodeIfPresent([String].self, forKey: .include) ?? []
         self.exclude = try c.decodeIfPresent([String].self, forKey: .exclude) ?? []
-        self.risky = try c.decodeIfPresent(Bool.self, forKey: .risky) ?? false
     }
 }
 

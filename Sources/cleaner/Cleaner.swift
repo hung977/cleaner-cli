@@ -27,7 +27,7 @@ struct Cleaner: AsyncParsableCommand {
     func run() async throws {
         let rt = Runtime(useColor: options.useColor)
         if let e = rt.configError { printErr("\(e)"); throw ExitCode(CleanerExitCode.config.rawValue) }
-        let selc: (include: String?, exclude: String?, risky: Bool)
+        let selc: (include: String?, exclude: String?)
         do { selc = try resolveSelection(config: rt.config, profileName: options.profile,
                                          include: options.include, exclude: options.exclude) }
         catch { printErr("\(error)"); throw ExitCode(CleanerExitCode.config.rawValue) }
@@ -245,7 +245,6 @@ struct ProfileList: AsyncParsableCommand {
             var bits: [String] = []
             if !p.include.isEmpty { bits.append("include \(p.include.count)") }
             if !p.exclude.isEmpty { bits.append("exclude \(p.exclude.count)") }
-            if p.risky { bits.append("risky") }
             printOut("  " + s.hexBold(0x7ECEC0, name) + s.hex(0x5E7180, "  " + (bits.isEmpty ? "all safe" : bits.joined(separator: " · "))))
         }
         printOut("\n  " + s.hex(0x8B98A5, "use with  ") + s.hexBold(0x8AC776, "cleaner --profile <name>") + "\n")

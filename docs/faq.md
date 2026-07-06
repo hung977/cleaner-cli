@@ -2,11 +2,12 @@
 
 ## Is it safe?
 
-Yes. `cleaner` never deletes without consent, and even then it **moves items to
-a recoverable staging area** rather than deleting them. It refuses to touch a
-hard-coded list of protected paths (Documents, Desktop, SSH/GPG keys,
-Keychains, credentials, and more), and it **never** auto-cleans Dangerous (🔴)
-items. See [safety.md](./safety.md) for the full model.
+Yes. **You choose what's cleaned** — the interactive prompt lets you clean all,
+select each source, or cancel, and nothing is removed without your consent.
+Even then, items are **moved to a recoverable staging area** rather than
+deleted, and the engine refuses to touch a hard-coded list of protected paths
+(Documents, Desktop, SSH/GPG keys, Keychains, credentials, and more). See
+[safety.md](./safety.md) for the full model.
 
 ## Does it delete permanently?
 
@@ -23,17 +24,18 @@ cleaner undo <session-id>
 
 Restores are byte-identical.
 
-## Why does `cleaner` only clean about half of what it found?
+## How do I pick specific things?
 
-By default `cleaner` cleans **Safe (🟢)** items only. Medium (🟡) items —
-browser and app caches, logs, DeviceSupport — are regenerated but cost time to
-rebuild, so they are left alone unless you opt in:
+Run `cleaner`, choose `s` (select each) at the prompt, and answer `y`/`n` for
+each source:
 
-```bash
-cleaner --all
+```
+Clean all <size>? [Y = all · s = select each · n = cancel]
 ```
 
-Dangerous (🔴) items are never auto-cleaned regardless of flags.
+Alternatively, skip a source with `--exclude <plugin-id>` (e.g.
+`cleaner --exclude dev.cleaner.browser.cache`) or drop it permanently via the
+config `ignore` list.
 
 ## Does it touch my browser cookies or passwords?
 
@@ -52,7 +54,7 @@ flag the limitation. To grant it:
 
 ## How do I run it in CI?
 
-Skip the prompt with `--yes`:
+Skip the prompt with `--yes` to clean everything found:
 
 ```bash
 cleaner --yes
@@ -75,7 +77,7 @@ Three options:
 
 ## Where are the logs?
 
-An append-only NDJSON audit log lives at:
+An append-only audit log lives at:
 
 ```
 ~/.cleaner/logs/
@@ -87,3 +89,5 @@ An append-only NDJSON audit log lives at:
 brew uninstall cleaner
 rm -rf ~/.cleaner     # optional: remove staging, logs, and config
 ```
+
+See [commands.md](./commands.md) for the full command reference.

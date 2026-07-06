@@ -1,57 +1,47 @@
 # Safety Model
 
-`cleaner` is designed so that a normal run can never lose data you care about.
-This document explains how.
+`cleaner` is designed so that a run can never lose data you care about. Safety
+does not rely on risk grades or classifications. It rests on three guarantees.
 
-## Preview → confirm → execute
+## 1. You choose what's cleaned
 
-Nothing is ever deleted without your consent. Every run follows the same flow:
+Nothing is removed without your consent. A run always presents what it found
+first, then acts only on what you pick:
 
-1. **Preview** — scan and print a grouped summary of what was found.
-2. **Confirm** — an interactive `[Y/n]` prompt, or an explicit `--yes` flag.
-3. **Execute** — act only on the confirmed items.
+```
+Clean all <size>? [Y = all · s = select each · n = cancel]
+```
 
-`--dry-run` stops after the preview and changes nothing.
+- `Y` / Enter — clean everything found.
+- `s` — walk each source with a `clean? [y/N]` prompt and pick per-source.
+- `n` — cancel; nothing is touched.
 
-## Move-to-staging, not delete
+For automation, `cleaner --yes` cleans everything found with no prompt.
+`cleaner --dry-run` stops after the summary and changes nothing.
 
-The default disposition is **move-to-staging**, not permanent deletion.
-Cleaned items are moved into a quarantine directory:
+## 2. Everything is recoverable
+
+Cleaned items are **moved to a staging quarantine**, not permanently deleted:
 
 ```
 ~/.cleaner/staging/
 ```
 
-Every staged item keeps its metadata so it can be restored faithfully. To
-recover a clean, run:
+Every staged item keeps its metadata so it can be restored faithfully — this
+includes the Trash, which is **staged, not emptied**. To recover:
 
 ```bash
-cleaner undo            # restore the most recent clean
+cleaner undo            # restore the most recent clean, byte-for-byte
 cleaner undo --list     # see what can be restored
+cleaner undo <id>       # restore a specific session
 ```
 
 Restores are **byte-identical**.
 
-## Risk levels
+## 3. Protected paths can never be touched
 
-Findings are classified by risk and shown in colour:
-
-| Level | Colour | Meaning | Cleaned when |
-| --- | --- | --- | --- |
-| Safe | 🟢 green | Regenerated automatically, no user data. | Default (and `--yes`). |
-| Medium | 🟡 amber | Regenerated but costs time to rebuild. | Only with `--all` or explicit confirmation. |
-| Dangerous | 🔴 red | May hold irreplaceable data. | **Never auto-cleaned.** Shown only. |
-
-- `--yes` cleans **Safe** items only.
-- `--all` adds **Medium** items.
-- **Dangerous** items (e.g. Xcode Archives with dSYMs/shipped builds) are never
-  cleaned automatically — they are only reported.
-
-## Protected paths
-
-The engine enforces a hard list of paths it will **never** touch, independently
-of any plugin. If a plugin ever tries to act on one, the run stops with exit
-code `8`.
+The engine refuses — independently of any plugin — to act on a hard-coded list
+of paths. If a plugin ever tries, the run stops with exit code `8`.
 
 Protected paths include:
 
@@ -62,29 +52,22 @@ Protected paths include:
 - Time Machine snapshots
 - The tool's own directories under `~/.cleaner/`
 
-## Audit log
+Additional guarantees:
 
-Every action is recorded in an append-only NDJSON audit log:
-
-```
-~/.cleaner/logs/
-```
-
-This gives you a full, replayable history of what was cleaned, staged, and
-restored.
-
-## Accurate measurements
-
-Reclaimable space is measured as **true on-disk allocated size** (APFS-aware),
-so the numbers reflect what you actually get back. Dry-run and real runs use
-identical code, so previews match results.
+- **Browsers:** only cache directories are ever targeted — never cookies,
+  history, or passwords.
+- **Accurate measurements:** reclaim is measured as **true on-disk allocated
+  size** (APFS-aware), so `--dry-run` matches a real run exactly.
+- **Audit log:** every action is written to an append-only audit log at
+  `~/.cleaner/logs/`, giving a full, replayable history of what was cleaned,
+  staged, and restored.
 
 ## Full Disk Access
 
 Some system-managed paths require macOS **Full Disk Access**. `cleaner`
 degrades gracefully when it is missing — it skips what it cannot read and
-exits with code `4` to signal the limitation. See the
-[FAQ](./faq.md) for how to grant it.
+exits with code `4` to signal the limitation. See the [FAQ](./faq.md) for how
+to grant it.
 
 ## Exit codes
 
@@ -97,3 +80,5 @@ exits with code `4` to signal the limitation. See the
 | `5` | Cancelled |
 | `6` | Config error |
 | `8` | Safety (blocked a protected path) |
+
+See [commands.md](./commands.md) for the full command reference.
