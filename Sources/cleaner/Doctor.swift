@@ -1,6 +1,7 @@
 import ArgumentParser
 import Foundation
 import CleanerCore
+import CleanerReport
 
 /// A single health check outcome.
 struct HealthCheck: Encodable {
@@ -61,11 +62,19 @@ struct Doctor: AsyncParsableCommand {
                 let health: String; let checks: [HealthCheck] }
             printOut(try ReportJSONEncode(Report(health: worst.rawValue, checks: checks)))
         } else {
+            let s = Style(enabled: options.useColor)
+            printOut("")
             for c in checks {
-                let icon = c.status == .ok ? "✓" : (c.status == .warn ? "!" : "✗")
-                printOut("  \(icon) \(c.name): \(c.detail)")
+                let icon: String
+                switch c.status {
+                case .ok: icon = s.hex(0x8AC776, "✓")
+                case .warn: icon = s.hex(0xD9A441, "!")
+                case .critical: icon = s.hex(0xE5595C, "✗")
+                }
+                printOut("  \(icon) " + s.hex(0xC6D2DC, c.name) + s.hex(0x5E7180, "  \(c.detail)"))
             }
-            printOut("\nHealth: \(worst.rawValue)")
+            let hc: UInt32 = worst == .ok ? 0x8AC776 : (worst == .warn ? 0xD9A441 : 0xE5595C)
+            printOut("\n  " + s.hex(0x8B98A5, "Health: ") + s.hexBold(hc, worst.rawValue) + "\n")
         }
 
         switch worst {

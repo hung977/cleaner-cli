@@ -170,7 +170,8 @@ struct Undo: AsyncParsableCommand {
             var last = ""
             for e in entries {
                 if e.sessionID.rawValue != last { printOut("  " + s.hexBold(0x7ECEC0, e.sessionID.rawValue)); last = e.sessionID.rawValue }
-                printOut("    " + s.hex(0xE6EDF3, e.allocatedSize.formatted) + "  " + s.hex(0xC6D2DC, e.originalPath))
+                printOut("    " + s.hex(0xE6EDF3, e.allocatedSize.formatted) + "  "
+                         + s.hex(0xC6D2DC, abbreviate(e.originalPath, home: rt.home)))
             }
             printOut("")
             return
@@ -187,8 +188,9 @@ struct Undo: AsyncParsableCommand {
         let ok = results.filter { $0.1 == nil }.count
         printOut("")
         for (entry, err) in results {
-            if let err { printOut("    " + s.hex(0xE5595C, "×") + " \(entry.originalPath): \(err)") }
-            else { printOut("    " + s.hex(0x8AC776, "✓") + " " + s.hex(0xC6D2DC, "restored \(entry.originalPath)")) }
+            let path = abbreviate(entry.originalPath, home: rt.home)
+            if let err { printOut("    " + s.hex(0xE5595C, "×") + " \(path): \(err)") }
+            else { printOut("    " + s.hex(0x8AC776, "✓") + " " + s.hex(0xC6D2DC, "restored \(path)")) }
         }
         printOut("\n  " + s.hexBold(0xE9F0F6, "Restored \(ok)/\(results.count) item(s).") + "\n")
         if ok < results.count { throw ExitCode(CleanerExitCode.partial.rawValue) }

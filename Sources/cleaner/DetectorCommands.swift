@@ -28,9 +28,14 @@ func resolveRoots(_ paths: [String], defaults: [String], home: String) -> [Strin
     }
 }
 
-/// Abbreviate an absolute path by replacing the home prefix with `~`.
+/// Abbreviate an absolute path by replacing the home prefix with `~` (handles the
+/// `/private` symlink so `/private/var/…` paths collapse too).
 func abbreviate(_ path: String, home: String) -> String {
-    path.hasPrefix(home) ? "~" + path.dropFirst(home.count) : path
+    let candidates = [home, (home as NSString).resolvingSymlinksInPath, "/private" + home]
+    for h in candidates where !h.isEmpty && (path == h || path.hasPrefix(h + "/")) {
+        return "~" + path.dropFirst(h.count)
+    }
+    return path
 }
 
 // MARK: - find (parent for detectors)
