@@ -56,16 +56,14 @@ struct PluginTests {
         #expect(findings.allSatisfy { $0.risk == .safe && $0.proposedDisposition == .stage })
     }
 
-    @Test("Trash is Medium risk and uses purge (never auto-cleaned)")
+    @Test("Trash is staged (recoverable via undo), not purged")
     func trash() async throws {
         let (base, ctx) = try homeWithFixtures()
         defer { try? FileManager.default.removeItem(atPath: base) }
         let findings = try await TrashPlugin().scan(ctx)
         #expect(findings.count == 1)
         let f = try #require(findings.first)
-        #expect(f.risk == .medium)
-        #expect(f.proposedDisposition == .purge)
-        #expect(!f.risk.isAutoCleanable)          // never under --yes
+        #expect(f.proposedDisposition == .stage)   // moved to staging, restorable
     }
 
     @Test("v0.5 dev-cache plugins detect their stores as Safe/stageable")

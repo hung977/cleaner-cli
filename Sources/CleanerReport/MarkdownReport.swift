@@ -22,17 +22,16 @@ public enum MarkdownReport {
         for g in groups {
             out.append("## \(g.category.displayName) — \(g.total.formatted)")
             out.append("")
-            out.append("| Source | Reclaimable | Risk |")
-            out.append("|---|---:|:--|")
+            out.append("| Source | Reclaimable |")
+            out.append("|---|---:|")
             let sources = Dictionary(grouping: g.findings, by: { $0.pluginID })
-                .map { (id, fs) -> (name: String, total: ByteCount, worst: RiskLevel, n: Int) in
-                    (names[id] ?? id.rawValue, fs.map(\.reclaimableSize).total(),
-                     fs.map(\.risk).max() ?? .safe, fs.count)
+                .map { (id, fs) -> (name: String, total: ByteCount, n: Int) in
+                    (names[id] ?? id.rawValue, fs.map(\.reclaimableSize).total(), fs.count)
                 }
                 .sorted { $0.total.bytes > $1.total.bytes }
             for src in sources {
                 let label = src.n > 1 ? "\(src.name) (\(src.n))" : src.name
-                out.append("| \(label) | \(src.total.formatted) | \(riskWord(src.worst)) |")
+                out.append("| \(label) | \(src.total.formatted) |")
             }
             out.append("")
         }
@@ -44,9 +43,5 @@ public enum MarkdownReport {
             out.append("")
         }
         return out.joined(separator: "\n")
-    }
-
-    private static func riskWord(_ r: RiskLevel) -> String {
-        switch r { case .safe: return "safe"; case .medium: return "medium"; case .dangerous: return "danger" }
     }
 }

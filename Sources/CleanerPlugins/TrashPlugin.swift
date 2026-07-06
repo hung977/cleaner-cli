@@ -23,10 +23,10 @@ public struct TrashPlugin: CleanerPlugin {
         PluginSupport.children(of: root(context), context).compactMap { path in
             PluginSupport.finding(
                 path: path, context: context, plugin: metadata, category: .trash,
-                score: 70,                       // 🟡 medium — see Art. 4.2 mapping
-                recoverability: .manual,         // could restore from Trash until purged
-                disposition: .purge,             // emptying Trash is permanent
-                rationale: "already in Trash; emptying frees the space permanently")
+                score: 70,
+                recoverability: .instant,        // staged → restore with `cleaner undo`
+                disposition: .stage,             // move to staging (recoverable), not purge
+                rationale: "already in Trash — moved to staging, restorable with cleaner undo")
         }
     }
 }

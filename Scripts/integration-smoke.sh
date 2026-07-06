@@ -40,12 +40,12 @@ echo "› dry-run mutates nothing"
 assert_exists "$H/Library/Developer/Xcode/DerivedData/MyApp-abc"
 assert_exists "$H/.npm/_cacache"
 
-echo "› --yes cleans Safe only (Trash 🟡 survives, protected untouched)"
+echo "› --yes cleans everything found (all staged); protected paths untouched"
 "$BIN" --yes >/dev/null
 assert_absent "$H/Library/Developer/Xcode/DerivedData/MyApp-abc"
 assert_absent "$H/.npm/_cacache"
-assert_exists "$H/.Trash/junk"
-assert_exists "$H/Documents/DO-NOT-DELETE.txt"
+assert_absent "$H/.Trash/junk"                 # Trash now staged too (recoverable)
+assert_exists "$H/Documents/DO-NOT-DELETE.txt" # protected — never touched
 
 echo "› cleaner undo restores the last clean"
 "$BIN" undo >/dev/null

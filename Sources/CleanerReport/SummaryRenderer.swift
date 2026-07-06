@@ -31,8 +31,7 @@ public struct SummaryRenderer: Sendable {
 
     public func analyze(_ result: ScanResult, elapsed: String? = nil,
                         scanning: (done: Int, total: Int, frame: Int)? = nil,
-                        names: [PluginID: String] = [:], verbose: Bool = false,
-                        showAllHint: Bool = true) -> String {
+                        names: [PluginID: String] = [:], verbose: Bool = false) -> String {
         var out: [String] = [""]
         let sizeW = max(8, (result.findings.map { $0.reclaimableSize.formatted.count }.max() ?? 8))
 
@@ -63,11 +62,10 @@ public struct SummaryRenderer: Sendable {
                             nameColor: Palette.teal, bold: true,
                             size: g.total.formatted, sizeW: sizeW, sizeColor: Palette.green, sizeBold: true))
 
-            // Group this category's findings by plugin, largest first.
+            // Group this category's findings by plugin, largest first. (No risk grading.)
             let sources = Dictionary(grouping: g.findings, by: { $0.pluginID })
-                .map { (id, fs) -> (name: String, total: ByteCount, worst: RiskLevel, findings: [Finding]) in
-                    (names[id] ?? id.rawValue, fs.map(\.reclaimableSize).total(),
-                     fs.map(\.risk).max() ?? .safe, fs)
+                .map { (id, fs) -> (name: String, total: ByteCount, findings: [Finding]) in
+                    (names[id] ?? id.rawValue, fs.map(\.reclaimableSize).total(), fs)
                 }
                 .sorted { $0.total.bytes > $1.total.bytes }
 
@@ -77,20 +75,20 @@ public struct SummaryRenderer: Sendable {
                     if src.findings.count > 1 {
                         out.append(line(name: src.name, indent: 4, nameColor: Palette.text2Strong, bold: false,
                                         size: src.total.formatted, sizeW: sizeW,
-                                        sizeColor: riskColor(src.worst), sizeBold: false))
+                                        sizeColor: Palette.text, sizeBold: false))
                     }
                     for f in src.findings.prefix(200) {
                         out.append(line(name: f.item.title, indent: src.findings.count > 1 ? 6 : 4,
                                         nameColor: Palette.text, bold: false,
                                         size: f.reclaimableSize.formatted, sizeW: sizeW,
-                                        sizeColor: riskColor(f.risk), sizeBold: false))
+                                        sizeColor: Palette.text, sizeBold: false))
                     }
                 } else {
                     // Collapsed: one line for the whole source with an item count.
                     out.append(line(name: "\(src.name) (\(src.findings.count))", indent: 4,
                                     nameColor: Palette.text, bold: false,
                                     size: src.total.formatted, sizeW: sizeW,
-                                    sizeColor: riskColor(src.worst), sizeBold: false))
+                                    sizeColor: Palette.text, sizeBold: false))
                 }
             }
         }
@@ -100,16 +98,9 @@ public struct SummaryRenderer: Sendable {
 
         out.append("")
         if scanning == nil {
-            let safe = result.findings.filter { $0.risk == .safe }.map(\.reclaimableSize).total()
-            let extra = result.findings.filter { $0.risk == .medium }.map(\.reclaimableSize).total()
             out.append("  " + s.hex(Palette.muted, "Total  ") + s.hexBold(Palette.textStrong, total)
                        + s.hex(Palette.faint, "   ·   ") + s.hex(Palette.muted, "run ")
                        + s.hexBold(Palette.green, "cleaner") + s.hex(Palette.muted, " to reclaim"))
-            if extra.bytes > 0 && showAllHint {
-                out.append("  " + s.hex(Palette.green, safe.formatted) + s.hex(Palette.muted, " Safe now")
-                           + s.hex(Palette.faint, "  ·  ") + s.hex(Palette.amber, extra.formatted)
-                           + s.hex(Palette.muted, " more with ") + s.hexBold(Palette.amber, "--all"))
-            }
         } else {
             out.append("  " + s.hex(Palette.muted, "discovered so far  ") + s.hexBold(Palette.textStrong, total))
         }
@@ -159,10 +150,6 @@ public struct SummaryRenderer: Sendable {
     private func justify(left: String, leftRaw: Int, right: String, rightRaw: Int) -> String {
         let pad = max(1, width - 2 - leftRaw - rightRaw)
         return "  " + left + String(repeating: " ", count: pad) + right
-    }
-
-    private func riskColor(_ r: RiskLevel) -> UInt32 {
-        switch r { case .safe: return Palette.text; case .medium: return Palette.amber; case .dangerous: return Palette.red }
     }
 
     public static func terminalWidth() -> Int {

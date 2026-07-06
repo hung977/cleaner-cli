@@ -20,8 +20,8 @@ struct ReportTests {
                                        names: [PluginID("dev.cleaner.xcode.deriveddata"): "Xcode DerivedData"])
         #expect(md.contains("# cleaner — Storage Report"))
         #expect(md.contains("**Total reclaimable: 2.0 MB**"))
-        #expect(md.contains("| Source | Reclaimable | Risk |"))
-        #expect(md.contains("| Xcode DerivedData | 2.0 MB | safe |"))
+        #expect(md.contains("| Source | Reclaimable |"))
+        #expect(md.contains("| Xcode DerivedData | 2.0 MB |"))
         #expect(!md.contains("🟢") && !md.contains("🛠"))   // no emoji
     }
 

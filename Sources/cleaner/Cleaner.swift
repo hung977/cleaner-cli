@@ -22,7 +22,6 @@ struct Cleaner: AsyncParsableCommand {
     @OptionGroup var options: GlobalOptions
     @Flag(name: .long, help: "Preview only — scan and show, clean nothing.") var dryRun = false
     @Flag(name: .long, help: "Clean Safe items without prompting (automation).") var yes = false
-    @Flag(name: .long, help: "Also clean Medium (🟡) items, not just Safe.") var all = false
     @Flag(name: .long, help: "Emit a Markdown report (implies preview).") var md = false
 
     func run() async throws {
@@ -57,32 +56,41 @@ struct Cleaner: AsyncParsableCommand {
             return
         }
 
-        // Show the summary (renders reliably — sizes + risk colours), then confirm with y/N.
-        printOut(rt.renderer.analyze(result, elapsed: elapsed, names: rt.pluginNames(),
-                                     verbose: options.verbose, showAllHint: !all))
+        // Show the summary, then let the user clean everything or pick each source.
+        let names = rt.pluginNames()
+        printOut(rt.renderer.analyze(result, elapsed: elapsed, names: names, verbose: options.verbose))
 
-        let safe = result.findings.filter { $0.risk == .safe }
-        let medium = result.findings.filter { $0.risk == .medium }
-        var selected = safe
-        if all { selected += medium }
-        selected = selected.filter { $0.risk != .dangerous }   // never Dangerous
-        if selected.isEmpty {
-            printOut("\n  " + s.hex(0x8B98A5, medium.isEmpty
-                ? "Nothing to clean." : "Nothing Safe to clean — pass --all to include Medium (🟡)."))
-            return
-        }
-        let total = selected.map(\.reclaimableSize).total()
-
-        if !yes {
-            guard isatty(fileno(stdin)) == 1 else {
-                printErr("  Not a terminal — run with " + s.hexBold(0x8AC776, "--yes") + " to clean.")
-                throw ExitCode(CleanerExitCode.cancelled.rawValue)
+        // Group findings into sources (one per plugin) for per-source selection.
+        let sources = Dictionary(grouping: result.findings, by: { $0.pluginID })
+            .map { (id, fs) -> (name: String, total: ByteCount, findings: [Finding]) in
+                (names[id] ?? id.rawValue, fs.map(\.reclaimableSize).total(), fs)
             }
-            let extra = (all && !medium.isEmpty) ? " (incl. \(medium.count) Medium)" : ""
-            guard promptYesNo("\n  Reclaim " + s.hexBold(0x8AC776, total.formatted) + extra + "?", defaultYes: true) else {
+            .sorted { $0.total.bytes > $1.total.bytes }
+
+        var selected: [Finding]
+        if yes {
+            selected = result.findings                      // automation: clean everything found
+        } else if isatty(fileno(stdin)) == 1 {
+            switch prompt3("\n  Clean all " + s.hexBold(0x8AC776, result.totalReclaimable.formatted) + "?") {
+            case .all:
+                selected = result.findings
+            case .cancel:
                 printErr("  Cancelled — nothing was changed.")
                 throw ExitCode(CleanerExitCode.cancelled.rawValue)
+            case .select:
+                printOut("")
+                selected = []
+                for src in sources {
+                    let label = src.findings.count > 1 ? "\(src.name) (\(src.findings.count))" : src.name
+                    let row = "    " + s.hex(0xC6D2DC, s.padRight(s.truncate(label, 32), 34))
+                        + s.hex(0xE6EDF3, s.padLeft(src.total.formatted, 9))
+                    if promptYesNo(row + "  clean?", defaultYes: false) { selected += src.findings }
+                }
+                if selected.isEmpty { printOut("\n  " + s.hex(0x8B98A5, "Nothing selected.") + "\n"); return }
             }
+        } else {
+            printErr("  Not a terminal — run with " + s.hexBold(0x8AC776, "--yes") + " to clean all.")
+            throw ExitCode(CleanerExitCode.cancelled.rawValue)
         }
 
         let plan = CleanPlan(actions: selected.map { .init(finding: $0, disposition: $0.proposedDisposition) })
@@ -119,6 +127,19 @@ struct GlobalOptions: ParsableArguments {
 
 func printOut(_ s: String) { print(s) }
 func printErr(_ s: String) { FileHandle.standardError.write(Data((s + "\n").utf8)) }
+
+/// Three-way choice for the clean prompt.
+enum CleanChoice { case all, select, cancel }
+func prompt3(_ question: String) -> CleanChoice {
+    guard isatty(fileno(stdin)) == 1 else { return .cancel }
+    FileHandle.standardError.write(Data("\(question) [Y = all · s = select each · n = cancel] ".utf8))
+    let line = (readLine(strippingNewline: true) ?? "").lowercased().trimmingCharacters(in: .whitespaces)
+    switch line {
+    case "", "y", "yes", "a", "all": return .all
+    case "s", "select", "p", "pick": return .select
+    default: return .cancel
+    }
+}
 
 func promptYesNo(_ question: String, defaultYes: Bool = false) -> Bool {
     guard isatty(fileno(stdin)) == 1 else { return defaultYes }
