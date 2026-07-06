@@ -4,6 +4,7 @@ import CleanerCore
 /// Colour tokens (slate theme, 0xRRGGBB) — kept subtle for a plain, normal-CLI look.
 enum Palette {
     static let textStrong: UInt32 = 0xE9F0F6
+    static let text2Strong: UInt32 = 0xDBE4EC
     static let text: UInt32 = 0xC6D2DC
     static let muted: UInt32 = 0x8B98A5
     static let dim: UInt32 = 0x5E7180
@@ -29,16 +30,21 @@ public struct SummaryRenderer: Sendable {
     }
 
     public func analyze(_ result: ScanResult, elapsed: String? = nil,
-                        scanning: (done: Int, total: Int, frame: Int)? = nil) -> String {
+                        scanning: (done: Int, total: Int, frame: Int)? = nil,
+                        names: [PluginID: String] = [:], verbose: Bool = false) -> String {
         var out: [String] = [""]
         let sizeW = max(8, (result.findings.map { $0.reclaimableSize.formatted.count }.max() ?? 8))
+
+        // Findings collapse to one "source" per plugin (e.g. 18 DerivedData folders → one
+        // "Xcode DerivedData (18)"); `-v` expands them. Count sources for the header.
+        let sourceCount = Set(result.findings.map { $0.pluginID }).count
 
         // Header.
         let total = result.totalReclaimable.formatted
         out.append(justify(left: s.hexBold(Palette.textStrong, "DISK RECLAIMABLE"), leftRaw: 16,
                            right: s.hexBold(Palette.green, total), rightRaw: total.count))
         if let elapsed {
-            out.append("  " + s.hex(Palette.dim, "\(result.findings.count) source(s) · \(elapsed)"))
+            out.append("  " + s.hex(Palette.dim, "\(sourceCount) source(s) · \(elapsed)"))
         }
 
         if result.findings.isEmpty {
@@ -55,14 +61,36 @@ public struct SummaryRenderer: Sendable {
             out.append(line(name: g.category.displayName, indent: 2,
                             nameColor: Palette.teal, bold: true,
                             size: g.total.formatted, sizeW: sizeW, sizeColor: Palette.green, sizeBold: true))
-            for f in g.findings.prefix(50) {
-                out.append(line(name: f.item.title, indent: 4,
-                                nameColor: Palette.text, bold: false,
-                                size: f.reclaimableSize.formatted, sizeW: sizeW,
-                                sizeColor: riskColor(f.risk), sizeBold: false))
-            }
-            if g.findings.count > 50 {
-                out.append("    " + s.hex(Palette.dim, "… and \(g.findings.count - 50) more"))
+
+            // Group this category's findings by plugin, largest first.
+            let sources = Dictionary(grouping: g.findings, by: { $0.pluginID })
+                .map { (id, fs) -> (name: String, total: ByteCount, worst: RiskLevel, findings: [Finding]) in
+                    (names[id] ?? id.rawValue, fs.map(\.reclaimableSize).total(),
+                     fs.map(\.risk).max() ?? .safe, fs)
+                }
+                .sorted { $0.total.bytes > $1.total.bytes }
+
+            for src in sources {
+                if verbose || src.findings.count == 1 {
+                    // Expanded: a header per multi-item source, then each item.
+                    if src.findings.count > 1 {
+                        out.append(line(name: src.name, indent: 4, nameColor: Palette.text2Strong, bold: false,
+                                        size: src.total.formatted, sizeW: sizeW,
+                                        sizeColor: riskColor(src.worst), sizeBold: false))
+                    }
+                    for f in src.findings.prefix(200) {
+                        out.append(line(name: f.item.title, indent: src.findings.count > 1 ? 6 : 4,
+                                        nameColor: Palette.text, bold: false,
+                                        size: f.reclaimableSize.formatted, sizeW: sizeW,
+                                        sizeColor: riskColor(f.risk), sizeBold: false))
+                    }
+                } else {
+                    // Collapsed: one line for the whole source with an item count.
+                    out.append(line(name: "\(src.name) (\(src.findings.count))", indent: 4,
+                                    nameColor: Palette.text, bold: false,
+                                    size: src.total.formatted, sizeW: sizeW,
+                                    sizeColor: riskColor(src.worst), sizeBold: false))
+                }
             }
         }
         for sk in result.skipped {

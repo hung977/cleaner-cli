@@ -70,7 +70,8 @@ struct Analyze: AsyncParsableCommand {
         if options.json {
             printOut(try ReportJSON.encode(ReportJSON.analyze(result)))
         } else {
-            printOut(rt.renderer.analyze(result, elapsed: elapsed))
+            printOut(rt.renderer.analyze(result, elapsed: elapsed,
+                                         names: rt.pluginNames(), verbose: options.verbose))
         }
         let code = result.resolvedExitCode
         if code != .ok { throw ExitCode(code.rawValue) }
@@ -107,7 +108,8 @@ struct Clean: AsyncParsableCommand {
         if risky { selected += result.findings.filter { $0.risk == .medium } }
         if yes { selected = selected.filter { $0.risk.isAutoCleanable } }
 
-        if !options.json { printOut(rt.renderer.analyze(result, elapsed: elapsed)) }
+        if !options.json { printOut(rt.renderer.analyze(result, elapsed: elapsed,
+                                                        names: rt.pluginNames(), verbose: options.verbose)) }
 
         if selected.isEmpty {
             if !options.json { printOut("\nNothing selected to clean.") }

@@ -65,6 +65,11 @@ struct Runtime {
                       logger: { FileHandle.standardError.write(Data(($0 + "\n").utf8)) })
     }
 
+    /// Map of plugin id → human name, for collapsing findings by source in the summary.
+    func pluginNames() -> [PluginID: String] {
+        Dictionary(uniqueKeysWithValues: registry.plugins.map { ($0.metadata.id, $0.metadata.name) })
+    }
+
     /// Union of all declared roots — the allow-space the cleanup guard validates against.
     func allowedRoots(_ plugins: [any CleanerPlugin], _ ctx: PluginContext) -> [String] {
         plugins.flatMap { $0.declaredRoots(ctx) }
