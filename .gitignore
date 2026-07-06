@@ -27,3 +27,6 @@ license/token.jws
 
 # ── Local tool state (never commit user runtime data) ────────
 .cleaner/
+
+# Local agent guidance (not tracked in git)
+CLAUDE.md
